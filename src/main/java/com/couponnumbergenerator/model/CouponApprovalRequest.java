@@ -84,6 +84,13 @@ public class CouponApprovalRequest {
     @Column(name = "target_status", length = 20)
     private CouponStatus targetStatus;
 
+    /**
+     * For TRANSITION/TRANSFER requests, the destination location of the move. For a REDEMPTION
+     * request there is no move — this instead holds the site the attendant asserted the
+     * redemption happened at, checked against each coupon's actual current location at submit
+     * time (there's no auth yet to derive this from a session, so it's asserted and validated
+     * instead of trusted).
+     */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "to_location_id")
     private Location toLocation;
@@ -126,6 +133,10 @@ public class CouponApprovalRequest {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "requisition_id")
     private CouponRequisition requisition;
+
+    /** REDEMPTION-only: the Navision reference stamped when the batch is posted (see {@link ApprovalStatus#POSTED}). */
+    @Column(name = "document_number", length = 50)
+    private String documentNumber;
 
     @PrePersist
     protected void onCreate() {

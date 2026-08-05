@@ -3,6 +3,8 @@ package com.couponnumbergenerator.service;
 import com.couponnumbergenerator.dto.request.ApprovalDecisionRequest;
 import com.couponnumbergenerator.dto.request.ReceiptConfirmationRequest;
 import com.couponnumbergenerator.dto.request.ReceiveBatchRequest;
+import com.couponnumbergenerator.dto.request.RedemptionPostRequest;
+import com.couponnumbergenerator.dto.request.RedemptionSubmitRequest;
 import com.couponnumbergenerator.dto.request.TransferRequest;
 import com.couponnumbergenerator.dto.request.TransitionRequest;
 import com.couponnumbergenerator.dto.response.ApprovalRequestResponse;
@@ -10,6 +12,7 @@ import com.couponnumbergenerator.dto.response.CouponMovementResponse;
 import com.couponnumbergenerator.dto.response.PagedResponse;
 import com.couponnumbergenerator.dto.response.TransferResultResponse;
 import com.couponnumbergenerator.dto.response.TransitionResultResponse;
+import com.couponnumbergenerator.enums.ApprovalRequestType;
 import com.couponnumbergenerator.enums.ApprovalStatus;
 import com.couponnumbergenerator.model.Coupon;
 import org.springframework.data.domain.Pageable;
@@ -92,5 +95,28 @@ public interface CouponLifecycleService {
     ApprovalRequestResponse getApprovalRequest(Long approvalRequestId);
 
     /** The supervisor's queue, optionally filtered by status (defaults to all). */
-    PagedResponse<ApprovalRequestResponse> getApprovalRequests(ApprovalStatus status, Pageable pageable);
+    default PagedResponse<ApprovalRequestResponse> getApprovalRequests(ApprovalStatus status, Pageable pageable) {
+        return getApprovalRequests(null, status, pageable);
+    }
+
+    /** Same as {@link #getApprovalRequests(ApprovalStatus, Pageable)}, additionally filterable by request type. */
+    PagedResponse<ApprovalRequestResponse> getApprovalRequests(ApprovalRequestType requestType, ApprovalStatus status, Pageable pageable);
+
+    /**
+     * Submits a batch of coupons for redemption (Duties 4-5: count/sign the redemption form,
+     * scan-verify against it) as a PENDING {@code REDEMPTION} request — no coupon status
+     * changes yet. Coupons are resolved either from scanned, HMAC-signed QR payloads (verified
+     * via {@link com.couponnumbergenerator.service.QrCodeService#decodeAndVerify}) or from
+     * manually-entered coupon numbers (fallback for a damaged QR). Every resolved coupon must
+     * currently sit at {@code locationId} — the site asserting the redemption — since there's
+     * no authenticated session yet to derive that from; a mismatch fails the whole batch.
+     */
+    ApprovalRequestResponse submitRedemption(RedemptionSubmitRequest request);
+
+    /**
+     * Posts a pending redemption request (Duty 6: record in Navision with a document number),
+     * re-validating each coupon is still ALLOCATED (all-or-nothing) before flipping it to
+     * REDEEMED. Only valid while the request is PENDING and of type REDEMPTION.
+     */
+    ApprovalRequestResponse postRedemption(Long approvalRequestId, RedemptionPostRequest request);
 }

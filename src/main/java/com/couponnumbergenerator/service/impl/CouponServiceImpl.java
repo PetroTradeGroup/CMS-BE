@@ -5,6 +5,7 @@ import com.couponnumbergenerator.dto.request.CouponFilterRequest;
 import com.couponnumbergenerator.dto.request.DenominationLine;
 import com.couponnumbergenerator.dto.request.GenerateBulkCouponRequest;
 import com.couponnumbergenerator.dto.request.GenerateCouponRequest;
+import com.couponnumbergenerator.dto.request.ImportLegacyCouponRequest;
 import com.couponnumbergenerator.dto.response.CouponResponse;
 import com.couponnumbergenerator.dto.response.PagedResponse;
 import com.couponnumbergenerator.enums.CouponStatus;
@@ -109,6 +110,38 @@ public class CouponServiceImpl implements CouponService {
                 resolveFuelType(request.fuelTypeId()), request.lines(), request.targetQuantity(),
                 request.locationId(), request.departmentId(), request.couponType(),
                 request.expiryDate(), request.performedBy());
+    }
+
+    @Override
+    @Transactional
+    public CouponResponse importLegacyCoupon(ImportLegacyCouponRequest request) {
+        String couponNumber = request.couponNumber().trim();
+        if (couponRepository.existsByCouponNumber(couponNumber)) {
+            throw new IllegalArgumentException("Coupon number '%s' already exists".formatted(couponNumber));
+        }
+
+        FuelType fuelType = resolveFuelType(request.fuelTypeId());
+        Location location = resolveOriginLocation(request.locationId());
+        Department department = resolveOriginDepartment(request.departmentId());
+        LocalDate expiryDate = request.expiryDate() != null
+                ? request.expiryDate()
+                : LocalDate.now().plusDays(bulkConfigService.getDefaultValidityDays());
+
+        Coupon coupon = couponRepository.save(Coupon.builder()
+                .couponNumber(couponNumber)
+                .fuelType(fuelType)
+                .denomination(request.denomination())
+                .status(CouponStatus.ALLOCATED)
+                .currentLocation(location)
+                .currentDepartment(department)
+                .couponType(CouponType.PHYSICAL)
+                .expiryDate(expiryDate)
+                .build());
+
+        couponLifecycleService.recordGeneration(List.of(coupon), request.performedBy());
+        log.info("Imported legacy coupon {} directly into ALLOCATED at {} ({})",
+                couponNumber, location.getCode(), department.getCode());
+        return CouponResponse.from(coupon);
     }
 
     @Override

@@ -5,6 +5,8 @@ import com.couponnumbergenerator.dto.request.ApprovalDecisionRequest;
 import com.couponnumbergenerator.dto.request.DenominationLine;
 import com.couponnumbergenerator.dto.request.ReceiptConfirmationRequest;
 import com.couponnumbergenerator.dto.request.ReceiveBatchRequest;
+import com.couponnumbergenerator.dto.request.RedemptionPostRequest;
+import com.couponnumbergenerator.dto.request.RedemptionSubmitRequest;
 import com.couponnumbergenerator.dto.request.TransferRequest;
 import com.couponnumbergenerator.dto.request.TransitionRequest;
 import com.couponnumbergenerator.dto.response.ApprovalRequestResponse;
@@ -18,9 +20,11 @@ import com.couponnumbergenerator.enums.ApprovalStatus;
 import com.couponnumbergenerator.enums.CouponStatus;
 import com.couponnumbergenerator.enums.MovementType;
 import com.couponnumbergenerator.enums.RequisitionStatus;
+import com.couponnumbergenerator.event.RedemptionSubmittedEvent;
 import com.couponnumbergenerator.exception.ApprovalAlreadyDecidedException;
 import com.couponnumbergenerator.exception.ApprovalRequestNotFoundException;
 import com.couponnumbergenerator.exception.CouponBatchNotFoundException;
+import com.couponnumbergenerator.exception.CouponLocationMismatchException;
 import com.couponnumbergenerator.exception.CouponNotFoundException;
 import com.couponnumbergenerator.exception.DepartmentNotFoundException;
 import com.couponnumbergenerator.exception.InvalidStatusTransitionException;
@@ -45,8 +49,10 @@ import com.couponnumbergenerator.repository.LocationRepository;
 import com.couponnumbergenerator.service.ActionOutcome;
 import com.couponnumbergenerator.service.BulkConfigService;
 import com.couponnumbergenerator.service.CouponLifecycleService;
+import com.couponnumbergenerator.service.QrCodeService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -83,6 +89,8 @@ public class CouponLifecycleServiceImpl implements CouponLifecycleService {
     private final DepartmentRepository departmentRepository;
     private final CouponApprovalRequestRepository couponApprovalRequestRepository;
     private final BulkConfigService bulkConfigService;
+    private final QrCodeService qrCodeService;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Override
     @Transactional
@@ -142,7 +150,7 @@ public class CouponLifecycleServiceImpl implements CouponLifecycleService {
                     .toStatus(coupon.getStatus())
                     .toLocation(coupon.getCurrentLocation())
                     .performedBy(performedBy)
-                    .referenceType("BATCH")
+                    .referenceType(coupon.getBatch() == null ? null : "BATCH")
                     .referenceId(coupon.getBatch() == null ? null : coupon.getBatch().getId())
                     .build());
         }
@@ -337,11 +345,89 @@ public class CouponLifecycleServiceImpl implements CouponLifecycleService {
 
     @Override
     @Transactional(readOnly = true)
-    public PagedResponse<ApprovalRequestResponse> getApprovalRequests(ApprovalStatus status, Pageable pageable) {
-        Page<CouponApprovalRequest> page = status == null
-                ? couponApprovalRequestRepository.findAll(pageable)
-                : couponApprovalRequestRepository.findByStatus(status, pageable);
+    public PagedResponse<ApprovalRequestResponse> getApprovalRequests(ApprovalRequestType requestType, ApprovalStatus status, Pageable pageable) {
+        Page<CouponApprovalRequest> page;
+        if (requestType == null && status == null) {
+            page = couponApprovalRequestRepository.findAll(pageable);
+        } else if (requestType == null) {
+            page = couponApprovalRequestRepository.findByStatus(status, pageable);
+        } else if (status == null) {
+            page = couponApprovalRequestRepository.findByRequestType(requestType, pageable);
+        } else {
+            page = couponApprovalRequestRepository.findByRequestTypeAndStatus(requestType, status, pageable);
+        }
         return PagedResponse.from(page.map(ApprovalRequestResponse::from));
+    }
+
+    @Override
+    @Transactional
+    public ApprovalRequestResponse submitRedemption(RedemptionSubmitRequest request) {
+        Set<String> couponNumbers = new LinkedHashSet<>();
+        if (request.scannedPayloads() != null) {
+            request.scannedPayloads().forEach(payload -> couponNumbers.add(qrCodeService.decodeAndVerify(payload)));
+        }
+        if (request.couponNumbers() != null) {
+            couponNumbers.addAll(request.couponNumbers());
+        }
+        if (couponNumbers.isEmpty()) {
+            throw new IllegalArgumentException("At least one of scannedPayloads or couponNumbers is required");
+        }
+        validateBatchSize(couponNumbers.size());
+        List<Coupon> coupons = loadCoupons(couponNumbers);
+
+        Location location = resolveLocation(request.locationId());
+        for (Coupon coupon : coupons) {
+            if (!coupon.getCurrentLocation().getId().equals(location.getId())) {
+                throw new CouponLocationMismatchException(coupon.getCouponNumber(),
+                        coupon.getCurrentLocation().getCode(), location.getCode());
+            }
+            if (!CouponStateMachine.canTransition(coupon.getStatus(), CouponStatus.REDEEMED)) {
+                throw new InvalidStatusTransitionException(coupon.getCouponNumber(), coupon.getStatus(), CouponStatus.REDEEMED);
+            }
+        }
+
+        CouponApprovalRequest approval = couponApprovalRequestRepository.save(CouponApprovalRequest.builder()
+                .requestType(ApprovalRequestType.REDEMPTION)
+                .couponNumbers(coupons.stream().map(Coupon::getCouponNumber).toList())
+                .couponCount(coupons.size())
+                .denominationBreakdown(denominationBreakdown(coupons))
+                .batchSequences(batchSequences(coupons))
+                .targetStatus(CouponStatus.REDEEMED)
+                .toLocation(location)
+                .reason(request.reason())
+                .requestedBy(request.performedBy())
+                .build());
+        log.info("Submitted {} coupon(s) for redemption at {} by {} (request #{})",
+                coupons.size(), location.getCode(), request.performedBy(), approval.getId());
+        eventPublisher.publishEvent(new RedemptionSubmittedEvent(approval.getId()));
+        return ApprovalRequestResponse.from(approval);
+    }
+
+    @Override
+    @Transactional
+    public ApprovalRequestResponse postRedemption(Long approvalRequestId, RedemptionPostRequest request) {
+
+        CouponApprovalRequest approval = resolvePendingApproval(approvalRequestId);
+        if (approval.getRequestType() != ApprovalRequestType.REDEMPTION) {
+            throw new IllegalArgumentException(
+                    "Approval request %d is not a redemption request".formatted(approvalRequestId));
+        }
+
+        List<Coupon> coupons = loadCoupons(new LinkedHashSet<>(approval.getCouponNumbers()));
+        String movementReason = request.reason() != null ? request.reason() : approval.getReason();
+        applyTransition(coupons, CouponStatus.REDEEMED, null, null, movementReason, request.performedBy(),
+                "REDEMPTION_REQUEST", approval.getId());
+
+        approval.setDocumentNumber(request.documentNumber());
+        approval.setStatus(ApprovalStatus.POSTED);
+        approval.setDecidedBy(request.performedBy());
+        approval.setDecidedAt(LocalDateTime.now());
+        if (request.reason() != null && !request.reason().isBlank()) {
+            approval.setDecisionReason(request.reason());
+        }
+        log.info("Redemption request {} posted by {} with document number {} — {} coupon(s) redeemed",
+                approvalRequestId, request.performedBy(), request.documentNumber(), coupons.size());
+        return ApprovalRequestResponse.from(approval);
     }
 
     private CouponApprovalRequest resolvePendingApproval(Long approvalRequestId) {
@@ -534,14 +620,21 @@ public class CouponLifecycleServiceImpl implements CouponLifecycleService {
         }
     }
 
+    private void applyTransition(List<Coupon> coupons, CouponStatus target, Location toLocation, Department toDepartment,
+                                 String reason, String performedBy) {
+        applyTransition(coupons, target, toLocation, toDepartment, reason, performedBy, null, null);
+    }
+
     /**
      * Applies a status/location/department change to every coupon, all-or-nothing.
      * {@code target == null} means "keep the current status" — a pure location/department
      * reassignment, recorded as {@link MovementType#REASSIGNMENT} instead of a derived
-     * lifecycle movement.
+     * lifecycle movement. {@code referenceType}/{@code referenceId} are stamped onto each
+     * {@link CouponMovement} when the caller has an originating record to link back to (e.g. a
+     * redemption request) — null for a plain transition/transfer.
      */
     private void applyTransition(List<Coupon> coupons, CouponStatus target, Location toLocation, Department toDepartment,
-                                 String reason, String performedBy) {
+                                 String reason, String performedBy, String referenceType, Long referenceId) {
         List<CouponMovement> movements = new ArrayList<>(coupons.size());
         for (Coupon coupon : coupons) {
             CouponStatus from = coupon.getStatus();
@@ -577,6 +670,8 @@ public class CouponLifecycleServiceImpl implements CouponLifecycleService {
                     .toDepartment(toDepartment != null ? toDepartment : fromDepartment)
                     .performedBy(performedBy)
                     .reason(reason)
+                    .referenceType(referenceType)
+                    .referenceId(referenceId)
                     .build());
         }
         couponRepository.saveAll(coupons);

@@ -1,5 +1,6 @@
 package com.couponnumbergenerator.service.impl;
 
+import com.couponnumbergenerator.exception.InvalidQrSignatureException;
 import com.couponnumbergenerator.model.Coupon;
 import com.couponnumbergenerator.qr.QrProperties;
 import com.couponnumbergenerator.service.QrCodeService;
@@ -19,6 +20,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
+import java.security.MessageDigest;
 import java.util.Base64;
 import java.util.Map;
 
@@ -35,6 +37,21 @@ public class QrCodeServiceImpl implements QrCodeService {
     public String buildSignedPayload(Coupon coupon) {
         String data = canonicalData(coupon);
         return data + "|" + sign(data);
+    }
+
+    @Override
+    public String decodeAndVerify(String payload) {
+        int splitIndex = payload == null ? -1 : payload.lastIndexOf('|');
+        if (splitIndex < 0) {
+            throw new InvalidQrSignatureException("Malformed QR payload");
+        }
+        String data = payload.substring(0, splitIndex);
+        String claimedSignature = payload.substring(splitIndex + 1);
+        if (!MessageDigest.isEqual(
+                sign(data).getBytes(StandardCharsets.UTF_8), claimedSignature.getBytes(StandardCharsets.UTF_8))) {
+            throw new InvalidQrSignatureException("QR signature invalid — possible tampering");
+        }
+        return data.split("\\|", 2)[0];
     }
 
     @Override

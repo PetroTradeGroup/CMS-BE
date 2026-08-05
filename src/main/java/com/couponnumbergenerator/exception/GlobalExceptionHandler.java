@@ -7,7 +7,9 @@ import org.springframework.data.core.PropertyReferenceException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.validation.FieldError;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -89,6 +91,31 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(RequisitionAlreadyDecidedException.class)
     public ResponseEntity<ApiResponse<Void>> handleRequisitionAlreadyDecided(RequisitionAlreadyDecidedException ex) {
         return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ApiResponse.error(ex.getMessage()));
+    }
+
+    @ExceptionHandler(InvalidQrSignatureException.class)
+    public ResponseEntity<ApiResponse<Void>> handleInvalidQrSignature(InvalidQrSignatureException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ApiResponse.error(ex.getMessage()));
+    }
+
+    @ExceptionHandler(CouponLocationMismatchException.class)
+    public ResponseEntity<ApiResponse<Void>> handleCouponLocationMismatch(CouponLocationMismatchException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ApiResponse.error(ex.getMessage()));
+    }
+
+    @ExceptionHandler(ObjectOptimisticLockingFailureException.class)
+    public ResponseEntity<ApiResponse<Void>> handleOptimisticLockingFailure(ObjectOptimisticLockingFailureException ex) {
+        log.warn("Concurrent modification conflict: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ApiResponse.error("Coupon was modified concurrently — retry"));
+    }
+
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMethodNotSupported(HttpRequestMethodNotSupportedException ex) {
+        return ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED)
                 .body(ApiResponse.error(ex.getMessage()));
     }
 

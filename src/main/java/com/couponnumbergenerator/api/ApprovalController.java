@@ -32,7 +32,7 @@ public class ApprovalController {
     @GetMapping
     @Operation(summary = "The approval queue, optionally filtered by status (defaults to all)")
     public ResponseEntity<ApiResponse<PagedResponse<ApprovalRequestResponse>>> getApprovalRequests(
-            @Parameter(description = "Filter by status: PENDING, APPROVED, TRANSFERSHIPMENT, TRANSRECEIPT, REJECTED")
+            @Parameter(description = "Filter by status: PENDING, APPROVED, TRANSFERSHIPMENT, TRANSRECEIPT, POSTED, REJECTED")
             @RequestParam(required = false) ApprovalStatus status,
             @PageableDefault(size = 20, sort = "requestedAt", direction = Sort.Direction.DESC) Pageable pageable) {
         return ResponseEntity.ok(ApiResponse.success(couponLifecycleService.getApprovalRequests(status, pageable)));

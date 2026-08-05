@@ -72,6 +72,7 @@ class CouponLifecycleServiceImplTest {
     @Mock private DepartmentRepository departmentRepository;
     @Mock private CouponApprovalRequestRepository couponApprovalRequestRepository;
     @Mock private BulkConfigService bulkConfigService;
+    @Mock private com.couponnumbergenerator.service.QrCodeService qrCodeService;
 
     @InjectMocks
     private CouponLifecycleServiceImpl service;

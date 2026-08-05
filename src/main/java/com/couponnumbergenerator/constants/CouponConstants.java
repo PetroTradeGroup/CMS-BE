@@ -19,6 +19,7 @@ public final class CouponConstants {
     public static final String DEPARTMENTS_PATH = "/departments";
     public static final String APPROVALS_PATH = "/approvals";
     public static final String REQUISITIONS_PATH = "/requisitions";
+    public static final String REDEMPTIONS_PATH = "/redemptions";
 
     public static final String DEFAULT_LOCATION_CODE = "HQ";
     public static final String DEFAULT_DEPARTMENT_CODE = "STOCKS";

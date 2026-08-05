@@ -4,6 +4,7 @@ import com.couponnumbergenerator.constants.CouponConstants;
 import com.couponnumbergenerator.dto.request.CouponFilterRequest;
 import com.couponnumbergenerator.dto.request.GenerateBulkCouponRequest;
 import com.couponnumbergenerator.dto.request.GenerateCouponRequest;
+import com.couponnumbergenerator.dto.request.ImportLegacyCouponRequest;
 import com.couponnumbergenerator.dto.request.TransferRequest;
 import com.couponnumbergenerator.dto.request.TransitionRequest;
 import com.couponnumbergenerator.dto.response.ApiResponse;
@@ -64,6 +65,18 @@ public class CouponController {
         List<CouponResponse> responses = couponService.generateBulkCoupons(request);
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.success(request.totalCount() + " coupon(s) generated successfully", responses));
+    }
+
+    @PostMapping("/legacy-import")
+    @Operation(summary = "Register a pre-existing (e.g. old barcoded) coupon directly at ALLOCATED",
+            description = "For a coupon that predates this system and was never generated here — registers it "
+                    + "with the given couponNumber (e.g. the value encoded in its barcode) directly at ALLOCATED, "
+                    + "skipping generation/receipt, so it can be redeemed through POST /redemptions like any "
+                    + "other coupon. Fails with 400 if couponNumber is already in use.")
+    public ResponseEntity<ApiResponse<CouponResponse>> importLegacyCoupon(
+            @Valid @RequestBody ImportLegacyCouponRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.success("Legacy coupon registered", couponService.importLegacyCoupon(request)));
     }
 
     @PostMapping("/transitions")

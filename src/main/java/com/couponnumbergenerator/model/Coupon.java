@@ -76,6 +76,11 @@ public class Coupon {
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
+    /** Optimistic lock — prevents a double-redemption race when the same coupon is scanned concurrently. */
+    @Version
+    @Column(name = "version", nullable = false)
+    private Long version;
+
     @PrePersist
     protected void onCreate() {
         createdAt = LocalDateTime.now();

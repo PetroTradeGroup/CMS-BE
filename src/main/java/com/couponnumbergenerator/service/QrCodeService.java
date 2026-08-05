@@ -13,4 +13,11 @@ public interface QrCodeService {
 
     /** Renders arbitrary text content as a PNG-encoded QR code image. */
     byte[] renderPng(String content);
+
+    /**
+     * Verifies a scanned {@link #buildSignedPayload(Coupon)} payload's HMAC signature and
+     * returns the coupon number it encodes. Throws {@link com.couponnumbergenerator.exception.InvalidQrSignatureException}
+     * if the signature doesn't match — a forged, corrupted, or otherwise tampered scan.
+     */
+    String decodeAndVerify(String payload);
 }

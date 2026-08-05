@@ -7,5 +7,7 @@ public enum ApprovalStatus {
     TRANSFERSHIPMENT,
     /** The receiving department confirmed receipt; the move is fully applied. */
     TRANSRECEIPT,
+    /** A REDEMPTION request was posted with a Navision document number; the coupons are REDEEMED. */
+    POSTED,
     REJECTED
 }

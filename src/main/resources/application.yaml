@@ -31,6 +31,14 @@ app:
       timeout-seconds: 180
   qr:
     secret-key: ${QR_SECRET_KEY:change-me-in-production-qr-secret}
+  erp:
+    enabled: ${ERP_ENABLED:true}
+    mock: ${ERP_MOCK:true}
+    base-url: ${ERP_BASE_URL:http://localhost:9090}
+    redemption-endpoint: ${ERP_REDEMPTION_ENDPOINT:/api/redemptions}
+    api-key: ${ERP_API_KEY:}
+    timeout-seconds: 30
+    retry-interval-ms: 300000
 
 springdoc:
   api-docs:

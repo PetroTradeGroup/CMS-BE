@@ -1,8 +1,12 @@
 package com.couponnumbergenerator.repository;
 
 import com.couponnumbergenerator.model.CouponMovement;
+import com.couponnumbergenerator.repository.projection.RedemptionSummaryRow;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 /**
@@ -11,4 +15,25 @@ import java.util.List;
 public interface CouponMovementRepository extends JpaRepository<CouponMovement, Long> {
 
     List<CouponMovement> findByCouponIdOrderByCreatedAtAsc(Long couponId);
+
+    /**
+     * The coupons redeemed in {@code [start, end)}, grouped by fuel type and denomination —
+     * REDEMPTION movements are the source of truth for <em>when</em> a coupon was redeemed
+     * (their {@code toLocation} is the redeeming site, since a redemption never moves the coupon).
+     */
+    @Query("""
+            SELECT ft.id AS fuelTypeId, ft.name AS fuelTypeName,
+                   c.denomination AS denomination, COUNT(c) AS count, SUM(c.denomination) AS litres
+            FROM CouponMovement m
+            JOIN m.coupon c
+            JOIN c.fuelType ft
+            WHERE m.movementType = com.couponnumbergenerator.enums.MovementType.REDEMPTION
+              AND m.createdAt >= :start AND m.createdAt < :end
+              AND (:locationId IS NULL OR m.toLocation.id = :locationId)
+            GROUP BY ft.id, ft.name, c.denomination
+            ORDER BY ft.name, c.denomination
+            """)
+    List<RedemptionSummaryRow> summarizeRedemptions(@Param("start") LocalDateTime start,
+                                                    @Param("end") LocalDateTime end,
+                                                    @Param("locationId") Long locationId);
 }
