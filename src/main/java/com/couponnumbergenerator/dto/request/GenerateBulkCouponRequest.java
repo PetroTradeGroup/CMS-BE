@@ -15,7 +15,7 @@ public record GenerateBulkCouponRequest(
         @NotNull(message = "Fuel type ID is required")
         Long fuelTypeId,
 
-        @NotNull(message = "Target quantity is required")
+        /** Optional cross-check: when set it must equal the lines' litres exactly; when omitted it is derived from them. */
         @Positive(message = "Target quantity must be greater than zero")
         BigDecimal targetQuantity,
 
@@ -35,13 +35,13 @@ public record GenerateBulkCouponRequest(
         String performedBy
 ) {
     public int totalCount() {
-        return lines.stream().mapToInt(DenominationLine::count).sum();
+        return lines.stream().mapToInt(DenominationLine::resolvedCount).sum();
     }
 
-    /** Sum of denomination * count across all lines — must equal {@link #targetQuantity()} exactly. */
+    /** Sum of denomination * count across all lines — must equal {@link #targetQuantity()} exactly when that is set. */
     public BigDecimal breakdownTotal() {
         return lines.stream()
-                .map(line -> line.denomination().multiply(BigDecimal.valueOf(line.count())))
+                .map(DenominationLine::resolvedLitres)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 }

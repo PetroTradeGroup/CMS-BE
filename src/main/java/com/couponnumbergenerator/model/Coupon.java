@@ -70,6 +70,15 @@ public class Coupon {
     @Column(name = "batch_sequence")
     private Integer batchSequence;
 
+    /**
+     * Which physical book of the batch this coupon is bound into (1-indexed): the print vendor
+     * binds every {@link com.couponnumbergenerator.constants.CouponConstants#BOOK_SIZE} consecutive
+     * coupons of one denomination, in print-CSV order. Null for coupons generated before books
+     * existed, for digital coupons, and for lines that didn't form whole books.
+     */
+    @Column(name = "book_number")
+    private Integer bookNumber;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 

@@ -46,6 +46,15 @@ public interface CouponLifecycleService {
      */
     void recordGeneration(List<Coupon> coupons, String performedBy);
 
+    /**
+     * Flips already-selected IN_STOCK coupons to ALLOCATED against an ERP sale (Phase 4,
+     * "coupon-blind ERP" — the coupons were sold in Business Central, not through this
+     * system's own transition endpoints), all-or-nothing. {@code saleId} is stamped onto
+     * each {@link com.couponnumbergenerator.model.CouponMovement} as its reference, linking
+     * the movement back to the {@link com.couponnumbergenerator.model.CouponSale}.
+     */
+    void allocateForSale(List<Coupon> coupons, String performedBy, Long saleId);
+
     /** Full movement history of a coupon, oldest first. */
     List<CouponMovementResponse> getHistory(String couponNumber);
 

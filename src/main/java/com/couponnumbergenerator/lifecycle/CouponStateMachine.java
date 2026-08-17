@@ -9,10 +9,7 @@ import java.util.Set;
 
 import static com.couponnumbergenerator.enums.CouponStatus.*;
 
-/**
- * Defines the legal coupon lifecycle transitions and the movement type each transition represents.
- * This is the single source of truth for lifecycle rules — all status changes must be validated here.
- */
+
 public final class CouponStateMachine {
 
     private static final Map<CouponStatus, Set<CouponStatus>> ALLOWED_TRANSITIONS = new EnumMap<>(Map.of(
@@ -36,13 +33,7 @@ public final class CouponStateMachine {
         return ALLOWED_TRANSITIONS.get(status).isEmpty();
     }
 
-    /**
-     * Whether a coupon in this status can be relocated (location/department changed) without also
-     * changing its status — i.e. it is sitting in stock, available to be moved. Anything else —
-     * already allocated, redeemed, flagged, mid-transfer (IN_TRANSIT), or terminal — has left stock
-     * and must go through an explicit status change (e.g. receiving it back to IN_STOCK first)
-     * before it's eligible to be transferred again.
-     */
+
     public static boolean isInStock(CouponStatus status) {
         return status == IN_STOCK;
     }
@@ -51,10 +42,7 @@ public final class CouponStateMachine {
         return ALLOWED_TRANSITIONS.get(from);
     }
 
-    /**
-     * The movement type recorded in the audit log for a given transition.
-     * A null {@code from} means the coupon is being created (GENERATION).
-     */
+
     public static MovementType movementFor(CouponStatus from, CouponStatus to) {
         if (from == null) {
             return MovementType.GENERATION;

@@ -20,6 +20,7 @@ public record CouponResponse(
         DepartmentResponse department,
         String batchNumber,
         Integer batchSequence,
+        Integer bookNumber,
         LocalDateTime createdAt
 ) {
     public static CouponResponse from(Coupon coupon) {
@@ -35,6 +36,7 @@ public record CouponResponse(
                 DepartmentResponse.from(coupon.getCurrentDepartment()),
                 coupon.getBatch() == null ? null : coupon.getBatch().getBatchNumber(),
                 coupon.getBatchSequence(),
+                coupon.getBookNumber(),
                 coupon.getCreatedAt()
         );
     }

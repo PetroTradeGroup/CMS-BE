@@ -39,6 +39,14 @@ app:
     api-key: ${ERP_API_KEY:}
     timeout-seconds: 30
     retry-interval-ms: 300000
+    sales:
+      enabled: ${ERP_SALES_ENABLED:false}
+      mock: ${ERP_SALES_MOCK:true}
+      base-url: ${ERP_SALES_BASE_URL:http://localhost:9091}
+      confirmation-endpoint: ${ERP_SALES_CONFIRMATION_ENDPOINT:/api/coupon-sales/confirm}
+      inbound-api-key: ${ERP_SALES_INBOUND_API_KEY:}
+      timeout-seconds: 30
+      retry-interval-ms: 300000
 
 springdoc:
   api-docs:

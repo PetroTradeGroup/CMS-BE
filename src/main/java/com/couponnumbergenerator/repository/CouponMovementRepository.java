@@ -16,11 +16,6 @@ public interface CouponMovementRepository extends JpaRepository<CouponMovement, 
 
     List<CouponMovement> findByCouponIdOrderByCreatedAtAsc(Long couponId);
 
-    /**
-     * The coupons redeemed in {@code [start, end)}, grouped by fuel type and denomination —
-     * REDEMPTION movements are the source of truth for <em>when</em> a coupon was redeemed
-     * (their {@code toLocation} is the redeeming site, since a redemption never moves the coupon).
-     */
     @Query("""
             SELECT ft.id AS fuelTypeId, ft.name AS fuelTypeName,
                    c.denomination AS denomination, COUNT(c) AS count, SUM(c.denomination) AS litres

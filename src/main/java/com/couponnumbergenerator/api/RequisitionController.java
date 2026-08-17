@@ -1,10 +1,12 @@
 package com.couponnumbergenerator.api;
 
 import com.couponnumbergenerator.constants.CouponConstants;
+import com.couponnumbergenerator.dto.request.AutoFulfillRequisitionRequest;
 import com.couponnumbergenerator.dto.request.CreateRequisitionRequest;
 import com.couponnumbergenerator.dto.request.FulfillRequisitionRequest;
 import com.couponnumbergenerator.dto.request.RequisitionDecisionRequest;
 import com.couponnumbergenerator.dto.response.ApiResponse;
+import com.couponnumbergenerator.dto.response.AutoFulfillResponse;
 import com.couponnumbergenerator.dto.response.PagedResponse;
 import com.couponnumbergenerator.dto.response.RequisitionResponse;
 import com.couponnumbergenerator.dto.response.TransferResultResponse;
@@ -28,15 +30,18 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 @RequiredArgsConstructor
 @RequestMapping(CouponConstants.API_BASE_PATH + CouponConstants.REQUISITIONS_PATH)
-@Tag(name = "Requisitions", description = "A department's request to Stock for coupons, in litres per denomination — the digital Internal Purchase Requisition")
+@Tag(name = "Requisitions", description = "A department's request to Stock for coupons, in books per denomination "
+        + "(a book = 100 coupons; litres are derived as books × 100 × denomination) — the digital Internal Purchase Requisition")
 public class RequisitionController {
 
     private final CouponRequisitionService couponRequisitionService;
 
     @PostMapping
-    @Operation(summary = "Raise a requisition", description = "A department asks Stock for coupons, e.g. 200L of "
-            + "20L petrol. Each line names a fuelTypeId — a single requisition can mix fuel types (e.g. petrol "
-            + "and diesel lines together), even at the same denomination.")
+    @Operation(summary = "Raise a requisition", description = "A department asks Stock for coupons in books, e.g. "
+            + "200 books of 20L petrol + 10 books of 5L petrol — the system derives the litres (200×100×20 + "
+            + "10×100×5). Each line names a fuelTypeId and either 'books' (preferred) or 'litres' (which must be "
+            + "an exact whole-book multiple, else 400); a single requisition can mix fuel types (e.g. petrol and "
+            + "diesel lines together), even at the same denomination.")
     public ResponseEntity<ApiResponse<RequisitionResponse>> create(@Valid @RequestBody CreateRequisitionRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.success("Requisition raised", couponRequisitionService.create(request)));
@@ -84,6 +89,23 @@ public class RequisitionController {
                             "Submitted for supervisor approval (request #%d)".formatted(pending.request().id()),
                             pending.request()));
         };
+    }
+
+    @PostMapping("/{id}/auto-fulfill")
+    @Operation(summary = "Auto-fulfil a requisition in whole books, oldest batches first",
+            description = "No batch or lines are named: for each outstanding line the system walks the batches of "
+                    + "that line's fuel type oldest-first (FIFO) and draws whole books (100 coupons of the line's "
+                    + "denomination) from each until the line is covered or stock runs out — spilling into the "
+                    + "next batch automatically when one runs dry. One deferred transfer (supervisor approval) is "
+                    + "raised per batch drawn from; litres credit on receipt confirmation, exactly as with manual "
+                    + "fulfill. Litres short of a whole book stay outstanding. 400 if not a single whole book of "
+                    + "issuable stock exists for any outstanding line.")
+    public ResponseEntity<ApiResponse<AutoFulfillResponse>> autoFulfill(
+            @PathVariable Long id, @Valid @RequestBody AutoFulfillRequisitionRequest request) {
+        AutoFulfillResponse response = couponRequisitionService.autoFulfill(id, request);
+        return ResponseEntity.status(HttpStatus.ACCEPTED).body(ApiResponse.success(
+                "%d transfer request(s) submitted for supervisor approval".formatted(response.transfers().size()),
+                response));
     }
 
     @PostMapping("/{id}/reject")

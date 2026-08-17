@@ -114,16 +114,18 @@ class CouponRequisitionServiceImplTest {
             return saved;
         });
 
+        // Stocks request in books: 1 book of 20 L = 2,000 L; 2 books of 50 L = 10,000 L.
         RequisitionResponse result = service.create(new CreateRequisitionRequest(2L, 1L, "commercial-clerk",
-                List.of(new RequisitionLineRequest(1L, new BigDecimal("20"), new BigDecimal("200")),
-                        new RequisitionLineRequest(2L, new BigDecimal("50"), new BigDecimal("300")))));
+                List.of(new RequisitionLineRequest(1L, new BigDecimal("20"), null, 1),
+                        new RequisitionLineRequest(2L, new BigDecimal("50"), null, 2))));
 
         assertThat(result.id()).isEqualTo(5L);
         assertThat(result.department().code()).isEqualTo("COMMERCIAL");
         assertThat(result.status()).isEqualTo(RequisitionStatus.PENDING);
         assertThat(result.lines()).hasSize(2);
         assertThat(result.lines().getFirst().fuelType().name()).isEqualTo("Petrol");
-        assertThat(result.lines().getFirst().requestedLitres()).isEqualByComparingTo("200");
+        assertThat(result.lines().getFirst().requestedLitres()).isEqualByComparingTo("2000");
+        assertThat(result.lines().getFirst().requestedBooks()).isEqualTo(1);
         assertThat(result.lines().getFirst().fulfilledLitres()).isEqualByComparingTo("0");
     }
 
@@ -137,8 +139,8 @@ class CouponRequisitionServiceImplTest {
 
         // A department can ask for both petrol and diesel in one requisition, even at the same denomination.
         RequisitionResponse result = service.create(new CreateRequisitionRequest(2L, 1L, "commercial-clerk",
-                List.of(new RequisitionLineRequest(1L, new BigDecimal("20"), new BigDecimal("200")),
-                        new RequisitionLineRequest(2L, new BigDecimal("20"), new BigDecimal("300")))));
+                List.of(new RequisitionLineRequest(1L, new BigDecimal("20"), null, 1),
+                        new RequisitionLineRequest(2L, new BigDecimal("20"), null, 1))));
 
         assertThat(result.lines()).hasSize(2);
         assertThat(result.lines()).extracting(line -> line.fuelType().name())

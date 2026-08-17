@@ -1,11 +1,15 @@
 package com.couponnumbergenerator.service.impl;
 
+import com.couponnumbergenerator.constants.CouponConstants;
+import com.couponnumbergenerator.dto.request.AutoFulfillRequisitionRequest;
 import com.couponnumbergenerator.dto.request.CreateRequisitionRequest;
 import com.couponnumbergenerator.dto.request.DenominationLine;
 import com.couponnumbergenerator.dto.request.FulfillRequisitionRequest;
 import com.couponnumbergenerator.dto.request.RequisitionDecisionRequest;
 import com.couponnumbergenerator.dto.request.RequisitionLineRequest;
 import com.couponnumbergenerator.dto.request.TransferRequest;
+import com.couponnumbergenerator.dto.response.ApprovalRequestResponse;
+import com.couponnumbergenerator.dto.response.AutoFulfillResponse;
 import com.couponnumbergenerator.dto.response.PagedResponse;
 import com.couponnumbergenerator.dto.response.RequisitionResponse;
 import com.couponnumbergenerator.dto.response.TransferResultResponse;
@@ -26,6 +30,7 @@ import com.couponnumbergenerator.model.Location;
 import com.couponnumbergenerator.model.RequisitionLine;
 import com.couponnumbergenerator.repository.CouponApprovalRequestRepository;
 import com.couponnumbergenerator.repository.CouponBatchRepository;
+import com.couponnumbergenerator.repository.CouponRepository;
 import com.couponnumbergenerator.repository.CouponRequisitionRepository;
 import com.couponnumbergenerator.repository.DepartmentRepository;
 import com.couponnumbergenerator.repository.FuelTypeRepository;
@@ -44,7 +49,10 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 
@@ -59,6 +67,7 @@ public class CouponRequisitionServiceImpl implements CouponRequisitionService {
     private final LocationRepository locationRepository;
     private final FuelTypeRepository fuelTypeRepository;
     private final CouponBatchRepository couponBatchRepository;
+    private final CouponRepository couponRepository;
     private final CouponLifecycleService couponLifecycleService;
 
     @Override
@@ -74,10 +83,21 @@ public class CouponRequisitionServiceImpl implements CouponRequisitionService {
                 .requestedBy(request.requestedBy())
                 .build();
         for (RequisitionLineRequest line : request.lines()) {
+            line.validateQuantity();
+            BigDecimal litres = line.resolvedLitres();
+            // Stocks issue physical coupons by the book, so every line must resolve to whole
+            // books — request `books` directly, or litres that are an exact book multiple.
+            if (litres.remainder(line.bookLitres()).compareTo(BigDecimal.ZERO) != 0) {
+                throw new IllegalArgumentException(
+                        "Line %s L: %s litres is not a whole number of books — one book is %d × %s L = %s L, so request in books"
+                                .formatted(line.denomination().toPlainString(), litres.toPlainString(),
+                                        CouponConstants.BOOK_SIZE, line.denomination().toPlainString(),
+                                        line.bookLitres().toPlainString()));
+            }
             requisition.addLine(RequisitionLine.builder()
                     .fuelType(resolveFuelType(line.fuelTypeId()))
                     .denomination(line.denomination())
-                    .requestedLitres(line.litres())
+                    .requestedLitres(litres)
                     .build());
         }
         CouponRequisition saved = couponRequisitionRepository.save(requisition);
@@ -96,6 +116,8 @@ public class CouponRequisitionServiceImpl implements CouponRequisitionService {
 
         List<DenominationLine> denominationLines = new ArrayList<>();
         for (RequisitionLineRequest line : request.lines()) {
+            line.validateQuantity();
+            BigDecimal litres = line.resolvedLitres();
             RequisitionLine matched = requisition.getLines().stream()
                     .filter(candidate -> candidate.getDenomination().compareTo(line.denomination()) == 0
                             && candidate.getFuelType().getId().equals(line.fuelTypeId()))
@@ -111,17 +133,17 @@ public class CouponRequisitionServiceImpl implements CouponRequisitionService {
                                         matched.getFuelType().getName()));
             }
             BigDecimal outstanding = matched.outstandingLitres();
-            if (line.litres().compareTo(outstanding) > 0) {
+            if (litres.compareTo(outstanding) > 0) {
                 throw new IllegalArgumentException(
                         "Requisition %d line %s: %s litres requested but only %s outstanding"
                                 .formatted(requisitionId, line.denomination().toPlainString(),
-                                        line.litres().toPlainString(), outstanding.toPlainString()));
+                                        litres.toPlainString(), outstanding.toPlainString()));
             }
-            BigDecimal[] countAndRemainder = line.litres().divideAndRemainder(line.denomination());
+            BigDecimal[] countAndRemainder = litres.divideAndRemainder(line.denomination());
             if (countAndRemainder[1].compareTo(BigDecimal.ZERO) != 0) {
                 throw new IllegalArgumentException(
                         "%s litres does not divide evenly into %s L coupons"
-                                .formatted(line.litres().toPlainString(), line.denomination().toPlainString()));
+                                .formatted(litres.toPlainString(), line.denomination().toPlainString()));
             }
             denominationLines.add(new DenominationLine(line.denomination(), countAndRemainder[0].intValueExact()));
         }
@@ -150,6 +172,59 @@ public class CouponRequisitionServiceImpl implements CouponRequisitionService {
             }
         }
         return outcome;
+    }
+
+    @Override
+    @Transactional
+    public AutoFulfillResponse autoFulfill(Long requisitionId, AutoFulfillRequisitionRequest request) {
+        CouponRequisition requisition = resolveOpenRequisition(requisitionId);
+
+        // Plan whole books per batch: for each outstanding line, walk that fuel type's batches
+        // oldest first and take as many whole books of issuable stock as each batch can give.
+        Map<Long, List<RequisitionLineRequest>> planByBatch = new LinkedHashMap<>();
+        Map<Long, List<CouponBatch>> batchesByFuelType = new HashMap<>();
+        for (RequisitionLine line : requisition.getLines()) {
+            BigDecimal bookLitres = line.getDenomination().multiply(BigDecimal.valueOf(CouponConstants.BOOK_SIZE));
+            int booksNeeded = line.outstandingLitres().divideToIntegralValue(bookLitres).intValueExact();
+            if (booksNeeded <= 0) {
+                continue;
+            }
+            List<CouponBatch> batches = batchesByFuelType.computeIfAbsent(line.getFuelType().getId(),
+                    couponBatchRepository::findByFuelTypeIdOrderByCreatedAtAsc);
+            for (CouponBatch batch : batches) {
+                if (booksNeeded == 0) {
+                    break;
+                }
+                long issuable = couponRepository.countIssuable(batch.getId(), line.getDenomination(),
+                        CouponConstants.DEFAULT_DEPARTMENT_CODE);
+                int booksAvailable = (int) (issuable / CouponConstants.BOOK_SIZE);
+                if (booksAvailable == 0) {
+                    continue;
+                }
+                int take = Math.min(booksNeeded, booksAvailable);
+                planByBatch.computeIfAbsent(batch.getId(), id -> new ArrayList<>())
+                        .add(new RequisitionLineRequest(line.getFuelType().getId(), line.getDenomination(),
+                                null, take));
+                booksNeeded -= take;
+            }
+        }
+        if (planByBatch.isEmpty()) {
+            throw new IllegalArgumentException(
+                    "No whole books of issuable stock found for the outstanding lines of requisition %d"
+                            .formatted(requisitionId));
+        }
+
+        List<ApprovalRequestResponse> transfers = new ArrayList<>();
+        for (Map.Entry<Long, List<RequisitionLineRequest>> entry : planByBatch.entrySet()) {
+            ActionOutcome<TransferResultResponse> outcome = fulfill(requisitionId, new FulfillRequisitionRequest(
+                    entry.getKey(), entry.getValue(), request.targetStatus(), request.reason(), request.performedBy()));
+            if (outcome instanceof ActionOutcome.Pending<TransferResultResponse> pending) {
+                transfers.add(pending.request());
+            }
+        }
+        log.info("Requisition {} auto-fulfilled from {} batch(es) by {} — {} transfer request(s) raised",
+                requisitionId, planByBatch.size(), request.performedBy(), transfers.size());
+        return new AutoFulfillResponse(getRequisition(requisitionId), transfers);
     }
 
     @Override

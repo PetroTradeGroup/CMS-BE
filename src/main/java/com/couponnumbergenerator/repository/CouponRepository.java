@@ -46,6 +46,41 @@ public interface CouponRepository extends JpaRepository<Coupon, Long>, JpaSpecif
     @Query("SELECT COUNT(c) FROM Coupon c WHERE c.createdAt >= :from AND c.createdAt < :to")
     long countByCreatedAtBetween(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
 
+    /**
+     * How many coupons of a batch + denomination Stock could issue right now: IN_STOCK and still
+     * sitting in the stock department — the same eligibility a denomination-pick transfer applies.
+     */
+    @Query("""
+            SELECT COUNT(c) FROM Coupon c
+            WHERE c.batch.id = :batchId
+              AND c.denomination = :denomination
+              AND c.status = com.couponnumbergenerator.enums.CouponStatus.IN_STOCK
+              AND c.currentDepartment.code = :departmentCode
+            """)
+    long countIssuable(@Param("batchId") Long batchId,
+                       @Param("denomination") BigDecimal denomination,
+                       @Param("departmentCode") String departmentCode);
+
+    /**
+     * Up to {@code pageable}'s page size of coupons eligible to sell at {@code locationId} —
+     * IN_STOCK, in the stock department, matching fuel type + denomination — oldest batch
+     * first (FIFO). Used to assign serials against an incoming ERP sale.
+     */
+    @Query("""
+            SELECT c FROM Coupon c
+            WHERE c.currentLocation.id = :locationId
+              AND c.fuelType.id = :fuelTypeId
+              AND c.denomination = :denomination
+              AND c.status = com.couponnumbergenerator.enums.CouponStatus.IN_STOCK
+              AND c.currentDepartment.code = :departmentCode
+            ORDER BY c.batch.createdAt ASC, c.batchSequence ASC
+            """)
+    List<Coupon> findIssuableForSale(@Param("locationId") Long locationId,
+                                     @Param("fuelTypeId") Long fuelTypeId,
+                                     @Param("denomination") BigDecimal denomination,
+                                     @Param("departmentCode") String departmentCode,
+                                     Pageable pageable);
+
     @Query("""
             SELECT l.id AS locationId, l.code AS locationCode, l.name AS locationName,
                    ft.id AS fuelTypeId, ft.name AS fuelTypeName,

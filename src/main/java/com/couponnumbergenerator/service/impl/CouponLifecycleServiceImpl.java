@@ -158,6 +158,13 @@ public class CouponLifecycleServiceImpl implements CouponLifecycleService {
     }
 
     @Override
+    @Transactional
+    public void allocateForSale(List<Coupon> coupons, String performedBy, Long saleId) {
+        applyTransition(coupons, CouponStatus.ALLOCATED, null, null,
+                "ERP sale", performedBy, "COUPON_SALE", saleId);
+    }
+
+    @Override
     @Transactional(readOnly = true)
     public List<CouponMovementResponse> getHistory(String couponNumber) {
         Coupon coupon = couponRepository.findByCouponNumber(couponNumber)
@@ -538,17 +545,19 @@ public class CouponLifecycleServiceImpl implements CouponLifecycleService {
         boolean departmentHandoff = request.toDepartmentId() != null;
         List<Coupon> selected = new ArrayList<>();
         for (DenominationLine line : request.denominationLines()) {
+            line.validateQuantity();
+            int requested = line.resolvedCount();
             List<Coupon> eligible = couponRepository
                     .findByBatchIdAndDenominationOrderByBatchSequenceAsc(request.batchId(), line.denomination())
                     .stream()
                     .filter(coupon -> isSelectableForDenomination(coupon, request.targetStatus(), departmentHandoff))
-                    .limit(line.count())
+                    .limit(requested)
                     .toList();
-            if (eligible.size() < line.count() && !allowPartial) {
+            if (eligible.size() < requested && !allowPartial) {
                 throw new IllegalArgumentException(
                         "Batch %d has only %d eligible coupon(s) of denomination %s, but %d were requested"
                                 .formatted(request.batchId(), eligible.size(),
-                                        line.denomination().toPlainString(), line.count()));
+                                        line.denomination().toPlainString(), requested));
             }
             selected.addAll(eligible);
         }

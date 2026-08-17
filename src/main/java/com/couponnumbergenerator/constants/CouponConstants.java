@@ -9,6 +9,9 @@ public final class CouponConstants {
     public static final int SEQUENCE_PADDING_LENGTH = 7;
     public static final long MAX_COUPONS_PER_LETTER = 10_000_000L;
 
+    /** Coupons per physical book: the print vendor binds every 100 consecutive coupons of one denomination. */
+    public static final int BOOK_SIZE = 100;
+
     public static final String API_BASE_PATH = "/api/v1";
     public static final String COUPONS_PATH = "/coupons";
     public static final String INSIGHTS_PATH = "/insights";
@@ -20,6 +23,7 @@ public final class CouponConstants {
     public static final String APPROVALS_PATH = "/approvals";
     public static final String REQUISITIONS_PATH = "/requisitions";
     public static final String REDEMPTIONS_PATH = "/redemptions";
+    public static final String ERP_SALES_PATH = "/erp/sales";
 
     public static final String DEFAULT_LOCATION_CODE = "HQ";
     public static final String DEFAULT_DEPARTMENT_CODE = "STOCKS";

@@ -90,6 +90,20 @@ public class CouponServiceImpl implements CouponService {
     @Override
     @Transactional
     public List<CouponResponse> generateBulkCoupons(GenerateBulkCouponRequest request) {
+        request.lines().forEach(DenominationLine::validateQuantity);
+        // Physical coupons are printed and bound into books of BOOK_SIZE by the vendor, so each
+        // denomination line must form whole books; digital coupons are never printed and are exempt.
+        if (request.couponType() != CouponType.DIGITAL) {
+            for (DenominationLine line : request.lines()) {
+                if (line.resolvedCount() % CouponConstants.BOOK_SIZE != 0) {
+                    throw new IllegalArgumentException(
+                            "Denomination line %s L × %d does not form whole books — physical coupons are printed in books of %d, so request them in books"
+                                    .formatted(line.denomination().toPlainString(), line.resolvedCount(),
+                                            CouponConstants.BOOK_SIZE));
+                }
+            }
+        }
+
         int totalCount = request.totalCount();
         int maxCount = bulkConfigService.getMaxCount();
         if (totalCount > maxCount) {
@@ -98,7 +112,7 @@ public class CouponServiceImpl implements CouponService {
         }
 
         BigDecimal breakdownTotal = request.breakdownTotal();
-        if (breakdownTotal.compareTo(request.targetQuantity()) != 0) {
+        if (request.targetQuantity() != null && breakdownTotal.compareTo(request.targetQuantity()) != 0) {
             BigDecimal diff = breakdownTotal.subtract(request.targetQuantity()).abs();
             String direction = breakdownTotal.compareTo(request.targetQuantity()) > 0 ? "over" : "under";
             throw new IllegalArgumentException(
@@ -107,7 +121,7 @@ public class CouponServiceImpl implements CouponService {
         }
 
         return generateCouponsInternal(
-                resolveFuelType(request.fuelTypeId()), request.lines(), request.targetQuantity(),
+                resolveFuelType(request.fuelTypeId()), request.lines(), breakdownTotal,
                 request.locationId(), request.departmentId(), request.couponType(),
                 request.expiryDate(), request.performedBy());
     }
@@ -262,7 +276,7 @@ public class CouponServiceImpl implements CouponService {
         if (expiryDate == null) {
             expiryDate = LocalDate.now().plusDays(bulkConfigService.getDefaultValidityDays());
         }
-        int count = lines.stream().mapToInt(DenominationLine::count).sum();
+        int count = lines.stream().mapToInt(DenominationLine::resolvedCount).sum();
 
         CouponSequence sequence = couponSequenceRepository.findByFuelTypeIdWithLock(fuelType.getId())
                 .orElseGet(() -> CouponSequence.initialFor(fuelType));
@@ -294,8 +308,18 @@ public class CouponServiceImpl implements CouponService {
         Set<String> generatedInBatch = new HashSet<>(count);
         List<Coupon> coupons = new ArrayList<>(count);
         int position = 0;
+        int book = 0;
         for (DenominationLine line : lines) {
-            for (int i = 0; i < line.count(); i++) {
+            int lineCount = line.resolvedCount();
+            // The print vendor binds every BOOK_SIZE consecutive CSV rows of a denomination into a
+            // book, so book numbers just follow generation order. A line that doesn't form whole
+            // books (single-coupon batches, digital coupons) gets none.
+            boolean wholeBooks = couponType != CouponType.DIGITAL
+                    && lineCount % CouponConstants.BOOK_SIZE == 0;
+            for (int i = 0; i < lineCount; i++) {
+                if (wholeBooks && i % CouponConstants.BOOK_SIZE == 0) {
+                    book++;
+                }
                 String couponNumber = generateUniqueCouponNumber(fuelType, sequence, generatedInBatch);
                 generatedInBatch.add(couponNumber);
                 coupons.add(Coupon.builder()
@@ -309,6 +333,7 @@ public class CouponServiceImpl implements CouponService {
                         .couponType(couponType)
                         .expiryDate(expiryDate)
                         .batchSequence(++position)
+                        .bookNumber(wholeBooks ? book : null)
                         .build());
             }
         }

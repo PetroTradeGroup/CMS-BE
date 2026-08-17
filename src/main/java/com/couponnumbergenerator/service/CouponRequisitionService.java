@@ -1,8 +1,10 @@
 package com.couponnumbergenerator.service;
 
+import com.couponnumbergenerator.dto.request.AutoFulfillRequisitionRequest;
 import com.couponnumbergenerator.dto.request.CreateRequisitionRequest;
 import com.couponnumbergenerator.dto.request.FulfillRequisitionRequest;
 import com.couponnumbergenerator.dto.request.RequisitionDecisionRequest;
+import com.couponnumbergenerator.dto.response.AutoFulfillResponse;
 import com.couponnumbergenerator.dto.response.PagedResponse;
 import com.couponnumbergenerator.dto.response.RequisitionResponse;
 import com.couponnumbergenerator.dto.response.TransferResultResponse;
@@ -26,6 +28,15 @@ public interface CouponRequisitionService {
      * lines' fulfilled-litres update once the receiving department confirms receipt.
      */
     ActionOutcome<TransferResultResponse> fulfill(Long requisitionId, FulfillRequisitionRequest request);
+
+    /**
+     * Fulfils as much of the requisition's outstanding lines as current stock allows, in whole
+     * books, without naming a batch: for each line the batches of its fuel type are walked oldest
+     * first (FIFO) and whole books of issuable stock are drawn from each until the line is covered
+     * or stock runs out — one deferred transfer per batch drawn from. Litres that don't amount to
+     * a whole book stay outstanding.
+     */
+    AutoFulfillResponse autoFulfill(Long requisitionId, AutoFulfillRequisitionRequest request);
 
     /** Declines a pending requisition outright; a reason is required. */
     RequisitionResponse reject(Long requisitionId, RequisitionDecisionRequest decision);

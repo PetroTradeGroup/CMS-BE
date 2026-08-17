@@ -149,6 +149,36 @@ class CouponLifecycleServiceImplTest {
     }
 
     @Test
+    void allocateForSaleFlipsCouponsToAllocatedAndLinksTheSaleReference() {
+        List<Coupon> coupons = List.of(coupon("PU002M0000001", CouponStatus.IN_STOCK),
+                coupon("PU002M0000002", CouponStatus.IN_STOCK));
+
+        service.allocateForSale(coupons, "ERP-SALE", 42L);
+
+        assertThat(coupons).allSatisfy(c -> assertThat(c.getStatus()).isEqualTo(CouponStatus.ALLOCATED));
+        verify(couponRepository).saveAll(coupons);
+
+        ArgumentCaptor<List<CouponMovement>> captor = ArgumentCaptor.captor();
+        verify(couponMovementRepository).saveAll(captor.capture());
+        assertThat(captor.getValue()).hasSize(2).allSatisfy(movement -> {
+            assertThat(movement.getMovementType()).isEqualTo(MovementType.ALLOCATION);
+            assertThat(movement.getToStatus()).isEqualTo(CouponStatus.ALLOCATED);
+            assertThat(movement.getPerformedBy()).isEqualTo("ERP-SALE");
+            assertThat(movement.getReferenceType()).isEqualTo("COUPON_SALE");
+            assertThat(movement.getReferenceId()).isEqualTo(42L);
+        });
+    }
+
+    @Test
+    void allocateForSaleRejectsACouponThatCannotBeAllocated() {
+        List<Coupon> coupons = List.of(coupon("PU002M0000001", CouponStatus.REDEEMED));
+
+        assertThatThrownBy(() -> service.allocateForSale(coupons, "ERP-SALE", 42L))
+                .isInstanceOf(InvalidStatusTransitionException.class);
+        verify(couponRepository, never()).saveAll(any());
+    }
+
+    @Test
     void illegalTransitionRejectsTheWholeBatch() {
         List<Coupon> coupons = List.of(coupon("PU002M0000001", CouponStatus.IN_STOCK),
                 coupon("PU002M0000002", CouponStatus.REDEEMED));
