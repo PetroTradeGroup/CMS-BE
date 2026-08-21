@@ -16,6 +16,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
@@ -47,6 +48,7 @@ public class ErpSaleController {
     }
 
     @GetMapping
+    @PreAuthorize("hasAnyRole('ADMIN','AUDITOR')")
     @Operation(summary = "The sales log, optionally filtered by status (defaults to all)")
     public ResponseEntity<ApiResponse<PagedResponse<CouponSaleResponse>>> getSales(
             @Parameter(description = "Filter by status: RECEIVED, ASSIGNED, PUSHED, FAILED")
@@ -56,6 +58,7 @@ public class ErpSaleController {
     }
 
     @GetMapping("/{documentNumber}")
+    @PreAuthorize("hasAnyRole('ADMIN','AUDITOR')")
     @Operation(summary = "Get a sale by its BC document number")
     public ResponseEntity<ApiResponse<CouponSaleResponse>> getSale(@PathVariable String documentNumber) {
         return ResponseEntity.ok(ApiResponse.success(couponSaleService.getByDocumentNumber(documentNumber)));

@@ -99,6 +99,11 @@ public class CouponApprovalRequest {
     @JoinColumn(name = "to_department_id")
     private Department toDepartment;
 
+    /** Only set for department-handoff TRANSFER requests, snapshotted at creation alongside {@link #toDepartment} — the origin side of the check {@link com.couponnumbergenerator.security.DepartmentAccessGuard} runs on {@code approve} (AD-3). */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "from_department_id")
+    private Department fromDepartment;
+
     @Column(length = 255)
     private String reason;
 

@@ -13,6 +13,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
@@ -28,6 +29,7 @@ public class DepartmentController {
     private final DepartmentService departmentService;
 
     @PostMapping
+    @PreAuthorize("hasRole('ADMIN')")
     @Operation(summary = "Create a department")
     public ResponseEntity<ApiResponse<DepartmentResponse>> create(
             @Valid @RequestBody CreateDepartmentRequest request) {
@@ -50,6 +52,7 @@ public class DepartmentController {
     }
 
     @PutMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
     @Operation(summary = "Update a department", description = "Departments are never deleted; deactivate them instead.")
     public ResponseEntity<ApiResponse<DepartmentResponse>> update(
             @PathVariable Long id,

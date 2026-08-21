@@ -15,6 +15,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
@@ -28,6 +29,7 @@ public class FuelTypeController {
     private final FuelTypeService fuelTypeService;
 
     @PostMapping
+    @PreAuthorize("hasRole('ADMIN')")
     @Operation(summary = "Create a new fuel type")
     public ResponseEntity<ApiResponse<FuelTypeResponse>> create(@Valid @RequestBody CreateFuelTypeRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED)
@@ -55,6 +57,7 @@ public class FuelTypeController {
     }
 
     @PutMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
     @Operation(summary = "Update a fuel type")
     public ResponseEntity<ApiResponse<FuelTypeResponse>> update(
             @PathVariable Long id, @Valid @RequestBody CreateFuelTypeRequest request) {
@@ -62,6 +65,7 @@ public class FuelTypeController {
     }
 
     @PatchMapping("/{id}/activate")
+    @PreAuthorize("hasRole('ADMIN')")
     @Operation(summary = "Activate a fuel type")
     public ResponseEntity<ApiResponse<Void>> activate(@PathVariable Long id) {
         fuelTypeService.activate(id);
@@ -69,6 +73,7 @@ public class FuelTypeController {
     }
 
     @PatchMapping("/{id}/deactivate")
+    @PreAuthorize("hasRole('ADMIN')")
     @Operation(summary = "Deactivate a fuel type")
     public ResponseEntity<ApiResponse<Void>> deactivate(@PathVariable Long id) {
         fuelTypeService.deactivate(id);

@@ -13,6 +13,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
@@ -28,6 +29,7 @@ public class LocationController {
     private final LocationService locationService;
 
     @PostMapping
+    @PreAuthorize("hasRole('ADMIN')")
     @Operation(summary = "Create a location")
     public ResponseEntity<ApiResponse<LocationResponse>> create(
             @Valid @RequestBody CreateLocationRequest request) {
@@ -50,6 +52,7 @@ public class LocationController {
     }
 
     @PutMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
     @Operation(summary = "Update a location", description = "Locations are never deleted; deactivate them instead.")
     public ResponseEntity<ApiResponse<LocationResponse>> update(
             @PathVariable Long id,

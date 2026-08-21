@@ -23,6 +23,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
@@ -37,6 +38,7 @@ public class RequisitionController {
     private final CouponRequisitionService couponRequisitionService;
 
     @PostMapping
+    @PreAuthorize("hasAnyRole('SALES_CLERK','SALES_EXECUTIVE','ACCOUNTS_CLERK','ADMIN')")
     @Operation(summary = "Raise a requisition", description = "A department asks Stock for coupons in books, e.g. "
             + "200 books of 20L petrol + 10 books of 5L petrol — the system derives the litres (200×100×20 + "
             + "10×100×5). Each line names a fuelTypeId and either 'books' (preferred) or 'litres' (which must be "
@@ -63,6 +65,7 @@ public class RequisitionController {
     }
 
     @PostMapping("/{id}/fulfill")
+    @PreAuthorize("hasAnyRole('STOCKS_CLERK','STOCKS_CONTROLLER','ADMIN')")
     @Operation(summary = "Fulfil a requisition, in whole or in part",
             description = "Stock names the batchId to draw from and how many litres of each fuel type + "
                     + "denomination it's issuing right now — which may be less than what's outstanding on the "
@@ -92,6 +95,7 @@ public class RequisitionController {
     }
 
     @PostMapping("/{id}/auto-fulfill")
+    @PreAuthorize("hasAnyRole('STOCKS_CLERK','STOCKS_CONTROLLER','ADMIN')")
     @Operation(summary = "Auto-fulfil a requisition in whole books, oldest batches first",
             description = "No batch or lines are named: for each outstanding line the system walks the batches of "
                     + "that line's fuel type oldest-first (FIFO) and draws whole books (100 coupons of the line's "
@@ -109,6 +113,7 @@ public class RequisitionController {
     }
 
     @PostMapping("/{id}/reject")
+    @PreAuthorize("hasAnyRole('STOCKS_CLERK','STOCKS_CONTROLLER','ADMIN')")
     @Operation(summary = "Reject a requisition, or close out what's left of a partial one",
             description = "A reason is required. Valid while PENDING or PARTIALLY_FULFILLED — rejecting a "
                     + "partially-fulfilled requisition closes out the outstanding balance without undoing "

@@ -30,6 +30,7 @@ import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -53,6 +54,7 @@ public class RedemptionController {
     private final QrCodeService qrCodeService;
 
     @PostMapping("/scan")
+    @PreAuthorize("hasAnyRole('ATTENDANT','TEAM_LEADER','STOCKS_CLERK','STOCKS_CONTROLLER','ADMIN')")
     @Operation(summary = "Preview a scanned coupon before redeeming it",
             description = "Verifies the scanned QR payload's HMAC signature (400 if forged or corrupted), "
                     + "looks the coupon up and returns its full details — number, denomination, fuel type, "
@@ -100,6 +102,7 @@ public class RedemptionController {
     }
 
     @PostMapping
+    @PreAuthorize("hasAnyRole('ATTENDANT','TEAM_LEADER','STOCKS_CLERK','STOCKS_CONTROLLER','ADMIN')")
     @Operation(summary = "Submit a batch of coupons for redemption",
             description = "Digital equivalent of counting/signing the redemption form and scan-verifying it "
                     + "(Duties 4-5). Resolve coupons from scanned, HMAC-signed QR payloads (scannedPayloads — "
@@ -116,6 +119,7 @@ public class RedemptionController {
     }
 
     @PostMapping("/{id}/post")
+    @PreAuthorize("hasAnyRole('STOCKS_CLERK','STOCKS_CONTROLLER','ADMIN')")
     @Operation(summary = "Manually post a pending redemption with a Navision document number",
             description = "Duty 6: records the redemption with its ERP document number, re-validating each "
                     + "coupon is still ALLOCATED before flipping it to REDEEMED (409, all-or-nothing, if anything "

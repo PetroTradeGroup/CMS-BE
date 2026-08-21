@@ -31,6 +31,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
@@ -50,6 +51,7 @@ public class CouponController {
     private final CouponLifecycleService couponLifecycleService;
 
     @PostMapping("/generate")
+    @PreAuthorize("hasAnyRole('STOCKS_CLERK','STOCKS_CONTROLLER','ADMIN')")
     @Operation(summary = "Generate a single coupon")
     public ResponseEntity<ApiResponse<CouponResponse>> generateCoupon(
             @Valid @RequestBody GenerateCouponRequest request) {
@@ -59,6 +61,7 @@ public class CouponController {
     }
 
     @PostMapping("/generate/bulk")
+    @PreAuthorize("hasAnyRole('STOCKS_CLERK','STOCKS_CONTROLLER','ADMIN')")
     @Operation(summary = "Generate bulk coupons", description = "Limit is managed via PATCH /api/v1/config/bulk-limit")
     public ResponseEntity<ApiResponse<List<CouponResponse>>> generateBulkCoupons(
             @Valid @RequestBody GenerateBulkCouponRequest request) {
@@ -68,6 +71,7 @@ public class CouponController {
     }
 
     @PostMapping("/legacy-import")
+    @PreAuthorize("hasAnyRole('STOCKS_CLERK','STOCKS_CONTROLLER','ADMIN')")
     @Operation(summary = "Register a pre-existing (e.g. old barcoded) coupon directly at ALLOCATED",
             description = "For a coupon that predates this system and was never generated here — registers it "
                     + "with the given couponNumber (e.g. the value encoded in its barcode) directly at ALLOCATED, "
@@ -80,6 +84,7 @@ public class CouponController {
     }
 
     @PostMapping("/transitions")
+    @PreAuthorize("hasAnyRole('STOCKS_CLERK','STOCKS_CONTROLLER','ADMIN')")
     @Operation(summary = "Transition coupons to a new lifecycle status",
             description = "All-or-nothing bulk transition validated against the lifecycle state machine. "
                     + "A reason is required for CANCELLED and FLAGGED. If toLocationId is set, the move is deferred "
@@ -99,6 +104,7 @@ public class CouponController {
     }
 
     @PostMapping("/transfers")
+    @PreAuthorize("hasAnyRole('STOCKS_CLERK','STOCKS_CONTROLLER','ADMIN')")
     @Operation(summary = "Transfer a whole batch, a position range, or a denomination breakdown to a new location/department",
             description = "Selects coupons by batch instead of naming coupon numbers: the whole batch (default), "
                     + "a 1-indexed inclusive rangeStart/rangeEnd position range, or a denominationLines breakdown — "

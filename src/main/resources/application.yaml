@@ -19,11 +19,18 @@ spring:
   flyway:
     baseline-on-migrate: true
     baseline-version: 1
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${KEYCLOAK_ISSUER_URI:http://10.10.2.248:8189/realms/petrotrade}
 
 server:
-  port: 8080
+  port: 8580
 
 app:
+  security:
+    jwk-set-uri: ${KEYCLOAK_JWK_SET_URI:${KEYCLOAK_ISSUER_URI:http://10.10.2.248:8189/realms/petrotrade}/protocol/openid-connect/certs}
   ai:
     ollama:
       base-url: http://localhost:11434

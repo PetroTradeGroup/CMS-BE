@@ -23,6 +23,7 @@ import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
@@ -139,6 +140,7 @@ public class CouponBatchController {
     }
 
     @PostMapping("/{id}/receive")
+    @PreAuthorize("hasAnyRole('STOCKS_CLERK','STOCKS_CONTROLLER','ADMIN')")
     @Operation(summary = "Receive a batch into stock",
             description = "Moves all GENERATED coupons of the batch to IN_STOCK at the given location (defaults to the batch's origin location).")
     public ResponseEntity<ApiResponse<TransitionResultResponse>> receiveBatch(

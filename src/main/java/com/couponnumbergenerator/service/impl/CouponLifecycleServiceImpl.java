@@ -46,6 +46,7 @@ import com.couponnumbergenerator.repository.CouponMovementRepository;
 import com.couponnumbergenerator.repository.CouponRepository;
 import com.couponnumbergenerator.repository.DepartmentRepository;
 import com.couponnumbergenerator.repository.LocationRepository;
+import com.couponnumbergenerator.security.DepartmentAccessGuard;
 import com.couponnumbergenerator.service.ActionOutcome;
 import com.couponnumbergenerator.service.BulkConfigService;
 import com.couponnumbergenerator.service.CouponLifecycleService;
@@ -55,6 +56,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -88,6 +90,7 @@ public class CouponLifecycleServiceImpl implements CouponLifecycleService {
     private final LocationRepository locationRepository;
     private final DepartmentRepository departmentRepository;
     private final CouponApprovalRequestRepository couponApprovalRequestRepository;
+    private final DepartmentAccessGuard departmentAccessGuard;
     private final BulkConfigService bulkConfigService;
     private final QrCodeService qrCodeService;
     private final ApplicationEventPublisher eventPublisher;
@@ -249,6 +252,8 @@ public class CouponLifecycleServiceImpl implements CouponLifecycleService {
                 && approval.getToDepartment() != null;
 
         if (departmentHandoff) {
+            departmentAccessGuard.assertDepartment(approval.getFromDepartment().getCode(),
+                    SecurityContextHolder.getContext().getAuthentication());
             // Re-validate eligibility explicitly (status AND department) rather than relying solely
             // on applyTransition's canTransition(from, IN_TRANSIT) check below — that only catches a
             // status drift (e.g. ALLOCATED elsewhere since the request), not a coupon that stayed
@@ -286,6 +291,8 @@ public class CouponLifecycleServiceImpl implements CouponLifecycleService {
         if (approval.getStatus() != ApprovalStatus.TRANSFERSHIPMENT) {
             throw new ReceiptNotAwaitedException(approvalRequestId, approval.getStatus());
         }
+        departmentAccessGuard.assertDepartment(approval.getToDepartment().getCode(),
+                SecurityContextHolder.getContext().getAuthentication());
 
         List<Coupon> coupons = loadCoupons(new LinkedHashSet<>(approval.getCouponNumbers()));
         CouponStatus finalStatus = approval.getTargetStatus() == null ? IN_STOCK : approval.getTargetStatus();
@@ -450,6 +457,10 @@ public class CouponLifecycleServiceImpl implements CouponLifecycleService {
                                                           List<Coupon> coupons, CouponBatch batch, Integer rangeStart, Integer rangeEnd,
                                                           CouponStatus targetStatus, Location toLocation, Department toDepartment,
                                                           String reason, String requestedBy) {
+        // A department handoff is only ever eligible from coupons currently IN_STOCK and in the
+        // STOCKS department (assertAllCanTransition/isEligibleForReassignment) — so every coupon in
+        // this batch shares the same origin department, safe to snapshot from the first one (AD-3).
+        Department fromDepartment = toDepartment == null ? null : coupons.get(0).getCurrentDepartment();
         return couponApprovalRequestRepository.save(CouponApprovalRequest.builder()
                 .requestType(type)
                 .couponNumbers(couponNumbers)
@@ -462,6 +473,7 @@ public class CouponLifecycleServiceImpl implements CouponLifecycleService {
                 .targetStatus(targetStatus)
                 .toLocation(toLocation)
                 .toDepartment(toDepartment)
+                .fromDepartment(fromDepartment)
                 .reason(reason)
                 .requestedBy(requestedBy)
                 .build());

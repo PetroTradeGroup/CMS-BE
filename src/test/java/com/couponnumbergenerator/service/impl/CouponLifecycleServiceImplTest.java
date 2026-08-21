@@ -36,6 +36,7 @@ import com.couponnumbergenerator.repository.CouponMovementRepository;
 import com.couponnumbergenerator.repository.CouponRepository;
 import com.couponnumbergenerator.repository.DepartmentRepository;
 import com.couponnumbergenerator.repository.LocationRepository;
+import com.couponnumbergenerator.security.DepartmentAccessGuard;
 import com.couponnumbergenerator.service.ActionOutcome;
 import com.couponnumbergenerator.service.BulkConfigService;
 import org.junit.jupiter.api.BeforeEach;
@@ -71,6 +72,7 @@ class CouponLifecycleServiceImplTest {
     @Mock private LocationRepository locationRepository;
     @Mock private DepartmentRepository departmentRepository;
     @Mock private CouponApprovalRequestRepository couponApprovalRequestRepository;
+    @Mock private DepartmentAccessGuard departmentAccessGuard;
     @Mock private BulkConfigService bulkConfigService;
     @Mock private com.couponnumbergenerator.service.QrCodeService qrCodeService;
 
@@ -388,7 +390,7 @@ class CouponLifecycleServiceImplTest {
                 coupon("PU002M0000002", CouponStatus.IN_STOCK, 2));
         CouponApprovalRequest approval = CouponApprovalRequest.builder()
                 .id(7L).requestType(ApprovalRequestType.TRANSFER).couponCount(2)
-                .batch(batch).toLocation(depot).toDepartment(commercial)
+                .batch(batch).toLocation(depot).toDepartment(commercial).fromDepartment(stocks)
                 .status(ApprovalStatus.PENDING).requestedBy("tester")
                 .build();
         when(couponApprovalRequestRepository.findById(7L)).thenReturn(Optional.of(approval));
@@ -482,6 +484,7 @@ class CouponLifecycleServiceImplTest {
         CouponApprovalRequest approval = CouponApprovalRequest.builder()
                 .id(9L).requestType(ApprovalRequestType.TRANSFER)
                 .couponNumbers(List.of("PU006M0000011", "PU006M0000012"))
+                .toDepartment(commercial)
                 .status(ApprovalStatus.TRANSFERSHIPMENT).requestedBy("stock-clerk")
                 .requisition(requisition)
                 .build();
@@ -512,6 +515,7 @@ class CouponLifecycleServiceImplTest {
         CouponApprovalRequest approval = CouponApprovalRequest.builder()
                 .id(9L).requestType(ApprovalRequestType.TRANSFER)
                 .couponNumbers(List.of("PU006M0000011", "PU006M0000012"))
+                .toDepartment(commercial)
                 .status(ApprovalStatus.TRANSFERSHIPMENT).requestedBy("stock-clerk")
                 .requisition(requisition)
                 .build();
@@ -768,7 +772,7 @@ class CouponLifecycleServiceImplTest {
         Coupon drifted = coupon("PU002M0000001", CouponStatus.ALLOCATED, 1);
         CouponApprovalRequest approval = CouponApprovalRequest.builder()
                 .id(15L).requestType(ApprovalRequestType.TRANSFER)
-                .batch(batch).toDepartment(commercial)
+                .batch(batch).toDepartment(commercial).fromDepartment(stocks)
                 .status(ApprovalStatus.PENDING).build();
         when(couponApprovalRequestRepository.findById(15L)).thenReturn(Optional.of(approval));
         when(couponRepository.findByBatchIdOrderByBatchSequenceAsc(10L)).thenReturn(List.of(drifted));
@@ -1002,7 +1006,7 @@ class CouponLifecycleServiceImplTest {
                 .id(14L).requestType(ApprovalRequestType.TRANSFER)
                 .batch(batch(10L, 100))
                 .couponNumbers(List.of("PU006M0000011", "PU006M0000013"))
-                .toDepartment(commercial)
+                .toDepartment(commercial).fromDepartment(stocks)
                 .status(ApprovalStatus.PENDING).requestedBy("tester")
                 .build();
         when(couponApprovalRequestRepository.findById(14L)).thenReturn(Optional.of(approval));

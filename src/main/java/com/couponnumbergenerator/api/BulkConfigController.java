@@ -14,6 +14,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
@@ -22,6 +23,7 @@ import org.springframework.web.bind.annotation.*;
 @RequiredArgsConstructor
 @RequestMapping(CouponConstants.API_BASE_PATH + "/config")
 @Tag(name = "Configuration", description = "Runtime configuration management")
+@PreAuthorize("hasRole('ADMIN')")
 public class BulkConfigController {
 
     private final BulkConfigService bulkConfigService;
