@@ -61,6 +61,7 @@ public class ErpRedemptionPoster {
                         .map(line -> new ErpRedemptionRequest.Line(line.getDenomination(), line.getCount(),
                                 line.getDenomination().multiply(BigDecimal.valueOf(line.getCount()))))
                         .toList(),
+                approval.getCarRegistrationNumber(),
                 approval.getRequestedBy(),
                 approval.getRequestedAt());
     }

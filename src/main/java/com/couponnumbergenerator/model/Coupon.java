@@ -1,5 +1,6 @@
 package com.couponnumbergenerator.model;
 
+import com.couponnumbergenerator.enums.CouponOrigin;
 import com.couponnumbergenerator.enums.CouponStatus;
 import com.couponnumbergenerator.enums.CouponType;
 import jakarta.persistence.*;
@@ -66,6 +67,16 @@ public class Coupon {
     @Column(name = "expiry_date")
     private LocalDate expiryDate;
 
+    /**
+     * How this coupon entered the system. Legacy-imported numbers use the same format as
+     * generated ones, so this is the only explicit way to tell them apart — the number alone
+     * won't do it.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "origin", nullable = false, length = 20)
+    @Builder.Default
+    private CouponOrigin origin = CouponOrigin.GENERATED;
+
     /** Position of this coupon within its batch (1-indexed, generation order). Null for coupons generated before this field existed. */
     @Column(name = "batch_sequence")
     private Integer batchSequence;
@@ -78,6 +89,13 @@ public class Coupon {
      */
     @Column(name = "book_number")
     private Integer bookNumber;
+
+    /**
+     * DIGITAL coupons only: the customer's secret code, typed at the station in place of a QR scan.
+     * Never exposed through the coupon APIs — only the bank purchase response carries it.
+     */
+    @Column(name = "redemption_code", length = 7, unique = true)
+    private String redemptionCode;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;

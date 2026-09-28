@@ -24,6 +24,12 @@ public final class CouponConstants {
     public static final String REQUISITIONS_PATH = "/requisitions";
     public static final String REDEMPTIONS_PATH = "/redemptions";
     public static final String ERP_SALES_PATH = "/erp/sales";
+    public static final String ATTENDANTS_PATH = "/attendants";
+    public static final String AUDIT_PATH = "/audit";
+    public static final String BANK_PATH = "/bank";
+
+    /** Currency of FuelType.pricePerLitre and every bank purchase amount. */
+    public static final String BANK_CURRENCY = "USD";
 
     public static final String DEFAULT_LOCATION_CODE = "HQ";
     public static final String DEFAULT_DEPARTMENT_CODE = "STOCKS";

@@ -88,7 +88,7 @@ public class CouponBatchServiceImpl implements CouponBatchService {
         }
         List<Coupon> coupons = couponRepository.findByBatchIdOrderByBatchSequenceAsc(id);
         Writer writer = new BufferedWriter(new OutputStreamWriter(outputStream, StandardCharsets.UTF_8));
-        writer.write("coupon_number,fuel_type,denomination,expiry_date,batch_number,batch_sequence,book_number,qr_payload\r\n");
+        writer.write("coupon_number,fuel_type,denomination,expiry_date,batch_number,batch_sequence_number,batch_sequence,book_number,qr_payload\r\n");
         for (Coupon coupon : coupons) {
             writer.write(String.join(",",
                     csvField(coupon.getCouponNumber()),
@@ -96,6 +96,8 @@ public class CouponBatchServiceImpl implements CouponBatchService {
                     csvField(coupon.getDenomination().toPlainString()),
                     csvField(coupon.getExpiryDate() == null ? "" : coupon.getExpiryDate().toString()),
                     csvField(coupon.getBatch() == null ? "" : coupon.getBatch().getBatchNumber()),
+                    csvField(coupon.getBatch() == null || coupon.getBatch().getSequenceNumber() == null
+                            ? "" : coupon.getBatch().getSequenceNumber().toString()),
                     csvField(coupon.getBatchSequence() == null ? "" : coupon.getBatchSequence().toString()),
                     csvField(coupon.getBookNumber() == null ? "" : coupon.getBookNumber().toString()),
                     csvField(qrCodeService.buildSignedPayload(coupon))));

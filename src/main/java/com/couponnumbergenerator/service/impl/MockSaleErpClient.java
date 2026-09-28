@@ -19,7 +19,7 @@ public class MockSaleErpClient implements SaleErpClient {
 
     @Override
     public void confirmSale(ErpSaleConfirmationRequest request) {
-        log.info("MOCK BC: sale {} confirmed with {} coupon(s)",
-                request.documentNumber(), request.couponNumbers().size());
+        log.info("MOCK BC: sale {} confirmed — {} line(s), {} coupon(s)",
+                request.documentNumber(), request.lines().size(), request.totalCouponNumbers());
     }
 }

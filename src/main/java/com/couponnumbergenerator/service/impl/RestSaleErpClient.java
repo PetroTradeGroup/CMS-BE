@@ -39,6 +39,7 @@ public class RestSaleErpClient implements SaleErpClient {
                     "BC sale confirmation call failed for document %s: %s"
                             .formatted(request.documentNumber(), ex.getMessage()), ex);
         }
-        log.info("BC confirmed sale {} with {} coupon(s)", request.documentNumber(), request.couponNumbers().size());
+        log.info("BC confirmed sale {} — {} line(s), {} coupon(s)",
+                request.documentNumber(), request.lines().size(), request.totalCouponNumbers());
     }
 }

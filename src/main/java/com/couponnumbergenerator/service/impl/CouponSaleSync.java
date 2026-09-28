@@ -1,7 +1,6 @@
 package com.couponnumbergenerator.service.impl;
 
 import com.couponnumbergenerator.config.ErpSalesProperties;
-import com.couponnumbergenerator.enums.SaleStatus;
 import com.couponnumbergenerator.event.SaleAssignedEvent;
 import com.couponnumbergenerator.model.CouponSale;
 import com.couponnumbergenerator.repository.CouponSaleRepository;
@@ -19,8 +18,9 @@ import java.util.List;
 
 /**
  * Drives {@link CouponSalePusher}: an immediate async attempt right after a sale is
- * assigned, plus a periodic sweep of everything still ASSIGNED (an ASSIGNED sale <em>is</em>
- * the retry queue entry — nothing extra is persisted). Mirrors {@link ErpRedemptionSync}.
+ * assigned, plus a periodic sweep of everything still awaiting BC confirmation (a sale left
+ * ASSIGNED / PARTIALLY_ASSIGNED <em>is</em> the retry queue entry — nothing extra is
+ * persisted). Mirrors {@link ErpRedemptionSync}.
  */
 @Slf4j
 @Component
@@ -49,7 +49,8 @@ public class CouponSaleSync {
             return;
         }
         List<CouponSale> pending = couponSaleRepository
-                .findByStatus(SaleStatus.ASSIGNED, PageRequest.of(0, RETRY_BATCH_SIZE, Sort.by("assignedAt")))
+                .findByStatusIn(CouponSalePusher.PENDING_PUSH,
+                        PageRequest.of(0, RETRY_BATCH_SIZE, Sort.by("assignedAt")))
                 .getContent();
         if (pending.isEmpty()) {
             return;

@@ -1,0 +1,50 @@
+{
+  "info": {
+    "name": "ERP Sales Mock (Business Central stand-in)",
+    "description": "Fires POST /api/v1/erp/sales the same way Business Central's outbox worker would — assigns oldest matching IN_STOCK coupons to ALLOCATED. Use this instead of hand-editing coupon status in the DB during testing. See ErpSaleController.java and docs/erp-sales-integration-design.md.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://196.43.101.217:8580" },
+    { "key": "tokenUrl", "value": "https://196.43.101.217:8189/realms/petrotrade/protocol/openid-connect/token" },
+    { "key": "clientId", "value": "erp-integration" },
+    { "key": "clientSecret", "value": "local-dev-erp-integration-secret" },
+    { "key": "locationCode", "value": "HQ" },
+    { "key": "fuelTypeId", "value": "1" },
+    { "key": "denomination", "value": "50.00" },
+    { "key": "quantity", "value": "5" }
+  ],
+  "item": [
+    {
+      "name": "Post Sale (allocate coupons)",
+      "request": {
+        "method": "POST",
+        "auth": {
+          "type": "oauth2",
+          "oauth2": [
+            { "key": "grant_type", "value": "client_credentials", "type": "string" },
+            { "key": "accessTokenUrl", "value": "{{tokenUrl}}", "type": "string" },
+            { "key": "clientId", "value": "{{clientId}}", "type": "string" },
+            { "key": "clientSecret", "value": "{{clientSecret}}", "type": "string" },
+            { "key": "client_authentication", "value": "header", "type": "string" },
+            { "key": "addTokenTo", "value": "header", "type": "string" },
+            { "key": "tokenType", "value": "Bearer", "type": "string" }
+          ]
+        },
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/erp/sales",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "erp", "sales"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"documentNumber\": \"SO-{{$timestamp}}\",\n  \"locationCode\": \"{{locationCode}}\",\n  \"customerReference\": \"Mock ERP test\",\n  \"lines\": [\n    {\n      \"fuelTypeId\": {{fuelTypeId}},\n      \"denomination\": {{denomination}},\n      \"quantity\": {{quantity}}\n    }\n  ]\n}"
+        }
+      },
+      "response": []
+    }
+  ]
+}

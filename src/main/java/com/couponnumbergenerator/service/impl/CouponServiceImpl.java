@@ -1,13 +1,17 @@
 package com.couponnumbergenerator.service.impl;
 
 import com.couponnumbergenerator.constants.CouponConstants;
+import com.couponnumbergenerator.constants.RedemptionCodes;
 import com.couponnumbergenerator.dto.request.CouponFilterRequest;
 import com.couponnumbergenerator.dto.request.DenominationLine;
 import com.couponnumbergenerator.dto.request.GenerateBulkCouponRequest;
 import com.couponnumbergenerator.dto.request.GenerateCouponRequest;
 import com.couponnumbergenerator.dto.request.ImportLegacyCouponRequest;
+import com.couponnumbergenerator.dto.response.BulkLegacyImportResponse;
 import com.couponnumbergenerator.dto.response.CouponResponse;
+import com.couponnumbergenerator.dto.response.LegacyImportRowResult;
 import com.couponnumbergenerator.dto.response.PagedResponse;
+import com.couponnumbergenerator.enums.CouponOrigin;
 import com.couponnumbergenerator.enums.CouponStatus;
 import com.couponnumbergenerator.enums.CouponType;
 import com.couponnumbergenerator.exception.CouponNotFoundException;
@@ -32,6 +36,14 @@ import com.couponnumbergenerator.service.CouponService;
 import com.couponnumbergenerator.specification.CouponSpecification;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.poi.ss.usermodel.Cell;
+import org.apache.poi.ss.usermodel.CellType;
+import org.apache.poi.ss.usermodel.DataFormatter;
+import org.apache.poi.ss.usermodel.DateUtil;
+import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.ss.usermodel.Sheet;
+import org.apache.poi.ss.usermodel.Workbook;
+import org.apache.poi.ss.usermodel.WorkbookFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -39,6 +51,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.io.BufferedWriter;
 import java.io.IOException;
@@ -51,6 +64,7 @@ import java.security.SecureRandom;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -150,12 +164,178 @@ public class CouponServiceImpl implements CouponService {
                 .currentDepartment(department)
                 .couponType(CouponType.PHYSICAL)
                 .expiryDate(expiryDate)
+                .origin(CouponOrigin.LEGACY_IMPORT)
                 .build());
 
         couponLifecycleService.recordGeneration(List.of(coupon), request.performedBy());
         log.info("Imported legacy coupon {} directly into ALLOCATED at {} ({})",
                 couponNumber, location.getCode(), department.getCode());
         return CouponResponse.from(coupon);
+    }
+
+    private static final int COL_COUPON_NUMBER = 0;
+    private static final int COL_FUEL_TYPE_CODE = 1;
+    private static final int COL_DENOMINATION = 2;
+    private static final int COL_LOCATION_CODE = 3;
+    private static final int COL_DEPARTMENT_CODE = 4;
+    private static final int COL_EXPIRY_DATE = 5;
+
+    @Override
+    @Transactional
+    public BulkLegacyImportResponse importLegacyCoupons(MultipartFile file, boolean dryRun, String performedBy) {
+        if (file == null || file.isEmpty()) {
+            throw new IllegalArgumentException("Upload file is required");
+        }
+
+        List<LegacyImportRowResult> results = new ArrayList<>();
+        List<Coupon> toSave = new ArrayList<>();
+        Set<String> seenInFile = new HashSet<>();
+        DataFormatter formatter = new DataFormatter();
+
+        try (Workbook workbook = WorkbookFactory.create(file.getInputStream())) {
+            Sheet sheet = workbook.getSheetAt(0);
+            for (Row row : sheet) {
+                if (row.getRowNum() == 0) {
+                    continue; // header row
+                }
+                int rowNum = row.getRowNum() + 1; // 1-indexed to match what ops sees in Excel
+                String couponNumber = cellText(row, COL_COUPON_NUMBER, formatter);
+                if (couponNumber.isEmpty()) {
+                    continue; // trailing/blank row — not an error, just nothing to import
+                }
+
+                try {
+                    toSave.add(parseLegacyRow(row, formatter, couponNumber, seenInFile));
+                    seenInFile.add(couponNumber.toUpperCase());
+                    results.add(LegacyImportRowResult.ok(rowNum, couponNumber));
+                } catch (IllegalArgumentException ex) {
+                    results.add(LegacyImportRowResult.failed(rowNum, couponNumber, ex.getMessage()));
+                }
+            }
+        } catch (IOException | RuntimeException ex) {
+            throw new IllegalArgumentException(
+                    "Could not read the uploaded file — is it a valid .xlsx with the expected columns "
+                            + "(couponNumber, fuelTypeCode, denomination, locationCode, departmentCode, expiryDate)?",
+                    ex);
+        }
+
+        // toSave only holds rows that passed validation above, so failures here can only mean a
+        // genuine race (another request took the same number between our check and this save) —
+        // rare enough for an admin-only bulk load that we don't need per-row savepoints for it.
+        if (!dryRun && !toSave.isEmpty()) {
+            List<Coupon> saved = couponRepository.saveAll(toSave);
+            couponLifecycleService.recordGeneration(saved, performedBy);
+        }
+
+        log.info("Legacy coupon spreadsheet processed: {} row(s), {} succeeded, {} failed (dryRun={})",
+                results.size(), toSave.size(), results.size() - toSave.size(), dryRun);
+        return BulkLegacyImportResponse.of(dryRun, results);
+    }
+
+    /** Validates one spreadsheet row and builds its (unsaved) {@link Coupon} — or throws with a row-specific reason. */
+    private Coupon parseLegacyRow(Row row, DataFormatter formatter, String couponNumber, Set<String> seenInFile) {
+        String trimmedNumber = couponNumber.trim();
+        if (trimmedNumber.length() > 20) {
+            throw new IllegalArgumentException("couponNumber must be at most 20 characters");
+        }
+        if (seenInFile.contains(trimmedNumber.toUpperCase())) {
+            throw new IllegalArgumentException("Duplicate coupon number within this file");
+        }
+        if (couponRepository.existsByCouponNumber(trimmedNumber)) {
+            throw new IllegalArgumentException("Coupon number already exists");
+        }
+
+        FuelType fuelType = resolveFuelTypeByCode(cellText(row, COL_FUEL_TYPE_CODE, formatter));
+        BigDecimal denomination = readDenomination(row, COL_DENOMINATION, formatter);
+        Location location = resolveLocationByCode(cellText(row, COL_LOCATION_CODE, formatter));
+        Department department = resolveDepartmentByCode(cellText(row, COL_DEPARTMENT_CODE, formatter));
+        LocalDate expiryDate = readExpiryDate(row, COL_EXPIRY_DATE, formatter);
+
+        return Coupon.builder()
+                .couponNumber(trimmedNumber)
+                .fuelType(fuelType)
+                .denomination(denomination)
+                .status(CouponStatus.ALLOCATED)
+                .currentLocation(location)
+                .currentDepartment(department)
+                .couponType(CouponType.PHYSICAL)
+                .expiryDate(expiryDate)
+                .origin(CouponOrigin.LEGACY_IMPORT)
+                .build();
+    }
+
+    private FuelType resolveFuelTypeByCode(String typeCode) {
+        if (typeCode.isEmpty()) {
+            throw new IllegalArgumentException("fuelTypeCode is required");
+        }
+        FuelType fuelType = fuelTypeRepository.findByTypeCode(typeCode)
+                .orElseThrow(() -> new IllegalArgumentException("Unknown fuel type code '%s'".formatted(typeCode)));
+        if (!fuelType.isActive()) {
+            throw new IllegalArgumentException("Fuel type '%s' is inactive".formatted(fuelType.getName()));
+        }
+        return fuelType;
+    }
+
+    private Location resolveLocationByCode(String code) {
+        if (code.isEmpty()) {
+            return resolveOriginLocation(null);
+        }
+        return locationRepository.findByCode(code)
+                .orElseThrow(() -> new IllegalArgumentException("Unknown location code '%s'".formatted(code)));
+    }
+
+    private Department resolveDepartmentByCode(String code) {
+        if (code.isEmpty()) {
+            return resolveOriginDepartment(null);
+        }
+        return departmentRepository.findByCode(code)
+                .orElseThrow(() -> new IllegalArgumentException("Unknown department code '%s'".formatted(code)));
+    }
+
+    private String cellText(Row row, int colIndex, DataFormatter formatter) {
+        Cell cell = row.getCell(colIndex);
+        return cell == null ? "" : formatter.formatCellValue(cell).trim();
+    }
+
+    private BigDecimal readDenomination(Row row, int colIndex, DataFormatter formatter) {
+        Cell cell = row.getCell(colIndex);
+        if (cell == null || cell.getCellType() == CellType.BLANK) {
+            throw new IllegalArgumentException("denomination is required");
+        }
+        BigDecimal value;
+        if (cell.getCellType() == CellType.NUMERIC) {
+            value = BigDecimal.valueOf(cell.getNumericCellValue());
+        } else {
+            String text = formatter.formatCellValue(cell).trim();
+            try {
+                value = new BigDecimal(text);
+            } catch (NumberFormatException ex) {
+                throw new IllegalArgumentException("denomination '%s' is not a number".formatted(text));
+            }
+        }
+        if (value.signum() <= 0) {
+            throw new IllegalArgumentException("denomination must be greater than zero");
+        }
+        return value;
+    }
+
+    private LocalDate readExpiryDate(Row row, int colIndex, DataFormatter formatter) {
+        Cell cell = row.getCell(colIndex);
+        if (cell == null || cell.getCellType() == CellType.BLANK) {
+            return LocalDate.now().plusDays(bulkConfigService.getDefaultValidityDays());
+        }
+        if (cell.getCellType() == CellType.NUMERIC && DateUtil.isCellDateFormatted(cell)) {
+            return cell.getLocalDateTimeCellValue().toLocalDate();
+        }
+        String text = formatter.formatCellValue(cell).trim();
+        if (text.isEmpty()) {
+            return LocalDate.now().plusDays(bulkConfigService.getDefaultValidityDays());
+        }
+        try {
+            return LocalDate.parse(text);
+        } catch (DateTimeParseException ex) {
+            throw new IllegalArgumentException("expiryDate '%s' is not a valid yyyy-MM-dd date".formatted(text));
+        }
     }
 
     @Override
@@ -185,7 +365,7 @@ public class CouponServiceImpl implements CouponService {
     @Transactional(readOnly = true)
     public void exportCoupons(CouponFilterRequest filter, OutputStream outputStream) throws IOException {
         Writer writer = new BufferedWriter(new OutputStreamWriter(outputStream, StandardCharsets.UTF_8));
-        writer.write("id,couponNumber,fuelType,status,couponType,location,department,batchNumber,batchSequence,expiryDate,createdAt\n");
+        writer.write("id,couponNumber,fuelType,status,couponType,location,department,batchNumber,batchSequence,expiryDate,createdAt,origin\n");
 
         var spec = listSpec(filter);
         var sort = Sort.by(Sort.Direction.DESC, "createdAt");
@@ -217,7 +397,8 @@ public class CouponServiceImpl implements CouponService {
                 csvEscape(coupon.getBatch() == null ? "" : coupon.getBatch().getBatchNumber()),
                 coupon.getBatchSequence() == null ? "" : coupon.getBatchSequence().toString(),
                 coupon.getExpiryDate() == null ? "" : coupon.getExpiryDate().toString(),
-                coupon.getCreatedAt().toString()
+                coupon.getCreatedAt().toString(),
+                coupon.getOrigin().name()
         ) + "\n";
     }
 
@@ -296,6 +477,7 @@ public class CouponServiceImpl implements CouponService {
 
         CouponBatch batch = couponBatchRepository.save(CouponBatch.builder()
                 .batchNumber(buildBatchNumber(fuelType))
+                .sequenceNumber(sequence.nextBatchSequenceNumber())
                 .fuelType(fuelType)
                 .couponType(couponType)
                 .quantity(count)
@@ -309,6 +491,7 @@ public class CouponServiceImpl implements CouponService {
         List<Coupon> coupons = new ArrayList<>(count);
         int position = 0;
         int book = 0;
+        Set<String> codesInBatch = new HashSet<>();
         for (DenominationLine line : lines) {
             int lineCount = line.resolvedCount();
             // The print vendor binds every BOOK_SIZE consecutive CSV rows of a denomination into a
@@ -334,6 +517,7 @@ public class CouponServiceImpl implements CouponService {
                         .expiryDate(expiryDate)
                         .batchSequence(++position)
                         .bookNumber(wholeBooks ? book : null)
+                        .redemptionCode(couponType == CouponType.DIGITAL ? newRedemptionCode(codesInBatch) : null)
                         .build());
             }
         }
@@ -347,6 +531,16 @@ public class CouponServiceImpl implements CouponService {
                 count, couponType, fuelType.getName(), batch.getBatchNumber(), origin.getCode(),
                 sequence.getCurrentLetter());
         return saved.stream().map(CouponResponse::from).toList();
+    }
+
+    // ponytail: no DB pre-check — a clash with an existing code (≈ live codes / 27.5 billion per
+    // coupon) fails the unique index and the caller retries; add an existsBy loop if volumes make that visible.
+    private String newRedemptionCode(Set<String> codesInBatch) {
+        String code;
+        do {
+            code = RedemptionCodes.generate(secureRandom);
+        } while (!codesInBatch.add(code));
+        return code;
     }
 
     private String buildBatchNumber(FuelType fuelType) {

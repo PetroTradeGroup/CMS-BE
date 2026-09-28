@@ -2,12 +2,15 @@ package com.couponnumbergenerator.dto.response;
 
 import com.couponnumbergenerator.model.FuelType;
 
+import java.math.BigDecimal;
+
 public record FuelTypeResponse(
         Long id,
         String name,
         String typeCode,
         String description,
-        boolean active
+        boolean active,
+        BigDecimal pricePerLitre
 ) {
     public static FuelTypeResponse from(FuelType fuelType) {
         return new FuelTypeResponse(
@@ -15,7 +18,8 @@ public record FuelTypeResponse(
                 fuelType.getName(),
                 fuelType.getTypeCode(),
                 fuelType.getDescription(),
-                fuelType.isActive()
+                fuelType.isActive(),
+                fuelType.getPricePerLitre()
         );
     }
 }

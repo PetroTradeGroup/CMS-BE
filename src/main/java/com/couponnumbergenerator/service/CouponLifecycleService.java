@@ -10,10 +10,12 @@ import com.couponnumbergenerator.dto.request.TransitionRequest;
 import com.couponnumbergenerator.dto.response.ApprovalRequestResponse;
 import com.couponnumbergenerator.dto.response.CouponMovementResponse;
 import com.couponnumbergenerator.dto.response.PagedResponse;
+import com.couponnumbergenerator.dto.response.ScanResponse;
 import com.couponnumbergenerator.dto.response.TransferResultResponse;
 import com.couponnumbergenerator.dto.response.TransitionResultResponse;
 import com.couponnumbergenerator.enums.ApprovalRequestType;
 import com.couponnumbergenerator.enums.ApprovalStatus;
+import com.couponnumbergenerator.enums.CouponStatus;
 import com.couponnumbergenerator.model.Coupon;
 import org.springframework.data.domain.Pageable;
 
@@ -54,6 +56,14 @@ public interface CouponLifecycleService {
      * the movement back to the {@link com.couponnumbergenerator.model.CouponSale}.
      */
     void allocateForSale(List<Coupon> coupons, String performedBy, Long saleId);
+
+    /**
+     * Moves a bank purchase's coupons to {@code target} — ALLOCATED when sold, CANCELLED when the
+     * bank reverses — all-or-nothing, stamping each movement with the
+     * {@link com.couponnumbergenerator.model.BankPurchase} id as its reference.
+     */
+    void transitionForBankPurchase(List<Coupon> coupons, CouponStatus target, String reason,
+                                   String performedBy, Long purchaseId);
 
     /** Full movement history of a coupon, oldest first. */
     List<CouponMovementResponse> getHistory(String couponNumber);
@@ -114,13 +124,19 @@ public interface CouponLifecycleService {
     /**
      * Submits a batch of coupons for redemption (Duties 4-5: count/sign the redemption form,
      * scan-verify against it) as a PENDING {@code REDEMPTION} request — no coupon status
-     * changes yet. Coupons are resolved either from scanned, HMAC-signed QR payloads (verified
-     * via {@link com.couponnumbergenerator.service.QrCodeService#decodeAndVerify}) or from
-     * manually-entered coupon numbers (fallback for a damaged QR). Every resolved coupon must
-     * currently sit at {@code locationId} — the site asserting the redemption — since there's
-     * no authenticated session yet to derive that from; a mismatch fails the whole batch.
+     * changes yet. Coupons are resolved from scanned, HMAC-signed QR payloads (verified via
+     * {@link com.couponnumbergenerator.service.QrCodeService#decodeAndVerify}), manually-entered
+     * coupon numbers (physical coupons only) or virtual coupons' redemption codes. Only station
+     * staff redeem: the station and attendant come from the caller's token. All-or-nothing — an
+     * unknown, expired, ineligible or already-pending coupon fails the whole batch.
      */
     ApprovalRequestResponse submitRedemption(RedemptionSubmitRequest request);
+
+    /** What the attendant sees before dispensing: the coupon and whether it can be redeemed right now, and why not. */
+    ScanResponse previewRedemption(String couponNumber);
+
+    /** {@link #previewRedemption} for a virtual coupon's redemption code (case, spaces and hyphens ignored). */
+    ScanResponse previewRedemptionByCode(String redemptionCode);
 
     /**
      * Posts a pending redemption request (Duty 6: record in Navision with a document number),

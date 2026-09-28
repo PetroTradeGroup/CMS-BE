@@ -27,6 +27,21 @@ public class CouponSequence {
     @Column(name = "issued_count", nullable = false, columnDefinition = "bigint default 0")
     private long issuedCount;
 
+    /**
+     * Last batch sequence number handed out for this fuel type (0 before the first batch).
+     * Batches are numbered 1, 2, 3… per fuel type — the canonical order stock is sold in
+     * (see §11.3 of docs/erp-sales-integration-design.md). Lives here rather than in its own
+     * table because generation already loads this row {@code FOR UPDATE} in the same
+     * transaction that creates the batch, so the increment is free and race-safe.
+     */
+    @Column(name = "batch_sequence_number", nullable = false, columnDefinition = "bigint default 0")
+    private long batchSequenceNumber;
+
+    /** Consumes and returns the next 1-based batch sequence number for this fuel type. */
+    public long nextBatchSequenceNumber() {
+        return ++batchSequenceNumber;
+    }
+
     public void advanceLetter() {
         if (currentLetter == 'Z') {
             throw new IllegalStateException(
@@ -42,6 +57,7 @@ public class CouponSequence {
                 .fuelType(fuelType)
                 .currentLetter(CouponConstants.LETTER_START)
                 .issuedCount(0L)
+                .batchSequenceNumber(0L)
                 .build();
     }
 }

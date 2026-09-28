@@ -17,6 +17,7 @@ public record ErpRedemptionRequest(
         BigDecimal totalValue,
         List<String> couponNumbers,
         List<Line> denominations,
+        String carRegistrationNumber,
         String submittedBy,
         LocalDateTime submittedAt
 ) {

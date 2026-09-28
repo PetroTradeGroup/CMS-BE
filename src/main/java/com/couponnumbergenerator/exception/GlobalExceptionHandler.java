@@ -100,22 +100,47 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.error(ex.getMessage()));
     }
 
-    @ExceptionHandler(CouponLocationMismatchException.class)
-    public ResponseEntity<ApiResponse<Void>> handleCouponLocationMismatch(CouponLocationMismatchException ex) {
-        return ResponseEntity.status(HttpStatus.CONFLICT)
-                .body(ApiResponse.error(ex.getMessage()));
-    }
-
     @ExceptionHandler(CouponSaleNotFoundException.class)
     public ResponseEntity<ApiResponse<Void>> handleCouponSaleNotFound(CouponSaleNotFoundException ex) {
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
                 .body(ApiResponse.error(ex.getMessage()));
     }
 
-    @ExceptionHandler(InvalidApiKeyException.class)
-    public ResponseEntity<ApiResponse<Void>> handleInvalidApiKey(InvalidApiKeyException ex) {
-        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+    @ExceptionHandler(CouponAlreadyPendingRedemptionException.class)
+    public ResponseEntity<ApiResponse<Void>> handleAlreadyPendingRedemption(CouponAlreadyPendingRedemptionException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
                 .body(ApiResponse.error(ex.getMessage()));
+    }
+
+    @ExceptionHandler(BankPurchaseNotFoundException.class)
+    public ResponseEntity<ApiResponse<Void>> handleBankPurchaseNotFound(BankPurchaseNotFoundException ex) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(ApiResponse.error(ex.getMessage()));
+    }
+
+    @ExceptionHandler(AttendantAlreadyExistsException.class)
+    public ResponseEntity<ApiResponse<Void>> handleAttendantAlreadyExists(AttendantAlreadyExistsException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ApiResponse.error(ex.getMessage()));
+    }
+
+    @ExceptionHandler(AttendantNotFoundException.class)
+    public ResponseEntity<ApiResponse<Void>> handleAttendantNotFound(AttendantNotFoundException ex) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(ApiResponse.error(ex.getMessage()));
+    }
+
+    @ExceptionHandler(AttendantNotSyncedException.class)
+    public ResponseEntity<ApiResponse<Void>> handleAttendantNotSynced(AttendantNotSyncedException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ApiResponse.error(ex.getMessage()));
+    }
+
+    @ExceptionHandler(KeycloakAdminException.class)
+    public ResponseEntity<ApiResponse<Void>> handleKeycloakAdminException(KeycloakAdminException ex) {
+        log.error("Keycloak admin API call failed: {}", ex.getMessage(), ex);
+        return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
+                .body(ApiResponse.error("Could not complete the request against Keycloak — try again shortly"));
     }
 
     @ExceptionHandler(DepartmentAccessDeniedException.class)

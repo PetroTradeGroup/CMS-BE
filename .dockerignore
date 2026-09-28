@@ -1,0 +1,12 @@
+target/
+.git/
+.idea/
+.vscode/
+_bmad/
+_bmad-output/
+docs/
+*.md
+*.pdf
+*.log
+docker/
+.env

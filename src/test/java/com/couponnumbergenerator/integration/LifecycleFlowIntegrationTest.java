@@ -5,6 +5,7 @@ import com.couponnumbergenerator.dto.request.CouponFilterRequest;
 import com.couponnumbergenerator.dto.request.CreateDepartmentRequest;
 import com.couponnumbergenerator.dto.request.CreateLocationRequest;
 import com.couponnumbergenerator.dto.request.DenominationLine;
+import com.couponnumbergenerator.dto.request.ErpSaleRequest;
 import com.couponnumbergenerator.dto.request.GenerateBulkCouponRequest;
 import com.couponnumbergenerator.dto.request.ReceiveBatchRequest;
 import com.couponnumbergenerator.dto.request.TransferRequest;
@@ -12,6 +13,7 @@ import com.couponnumbergenerator.dto.request.TransitionRequest;
 import com.couponnumbergenerator.dto.response.ApprovalRequestResponse;
 import com.couponnumbergenerator.dto.response.CouponMovementResponse;
 import com.couponnumbergenerator.dto.response.CouponResponse;
+import com.couponnumbergenerator.dto.response.CouponSaleResponse;
 import com.couponnumbergenerator.dto.response.InventorySummaryResponse;
 import com.couponnumbergenerator.dto.response.PagedResponse;
 import com.couponnumbergenerator.enums.ApprovalStatus;
@@ -19,12 +21,17 @@ import com.couponnumbergenerator.enums.CouponStatus;
 import com.couponnumbergenerator.enums.CouponType;
 import com.couponnumbergenerator.enums.LocationType;
 import com.couponnumbergenerator.enums.MovementType;
+import com.couponnumbergenerator.enums.SaleStatus;
 import com.couponnumbergenerator.exception.InvalidStatusTransitionException;
+import com.couponnumbergenerator.model.Coupon;
 import com.couponnumbergenerator.model.CouponBatch;
+import com.couponnumbergenerator.model.FuelType;
 import com.couponnumbergenerator.repository.CouponBatchRepository;
+import com.couponnumbergenerator.repository.CouponRepository;
 import com.couponnumbergenerator.repository.FuelTypeRepository;
 import com.couponnumbergenerator.service.ActionOutcome;
 import com.couponnumbergenerator.service.CouponLifecycleService;
+import com.couponnumbergenerator.service.CouponSaleService;
 import com.couponnumbergenerator.service.CouponService;
 import com.couponnumbergenerator.service.DepartmentService;
 import com.couponnumbergenerator.service.InventoryService;
@@ -36,12 +43,14 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.transaction.annotation.Transactional;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.Comparator;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -62,8 +71,10 @@ class LifecycleFlowIntegrationTest {
 
     @Autowired private CouponService couponService;
     @Autowired private CouponLifecycleService lifecycleService;
+    @Autowired private CouponSaleService couponSaleService;
     @Autowired private InventoryService inventoryService;
     @Autowired private CouponBatchRepository couponBatchRepository;
+    @Autowired private CouponRepository couponRepository;
     @Autowired private FuelTypeRepository fuelTypeRepository;
     @Autowired private LocationService locationService;
     @Autowired private DepartmentService departmentService;
@@ -206,6 +217,101 @@ class LifecycleFlowIntegrationTest {
         List<CouponMovementResponse> history = lifecycleService.getHistory(couponNumber);
         assertThat(history).extracting(CouponMovementResponse::movementType)
                 .containsExactly(MovementType.GENERATION);
+    }
+
+    @Test
+    void batchSequenceNumberIncrementsIndependentlyPerFuelType() {
+        List<FuelType> fuelTypes = fuelTypeRepository.findAll();
+        Long petrolId = fuelTypes.getFirst().getId();
+        Long dieselId = fuelTypes.getLast().getId();
+
+        // No rollback between methods in this class, so assert relative increments rather than
+        // absolute values — earlier tests may already have created batches for these fuel types.
+        long petrolFirst = generateOneDigitalBatch(petrolId).getSequenceNumber();
+        long dieselFirst = generateOneDigitalBatch(dieselId).getSequenceNumber();
+        long petrolSecond = generateOneDigitalBatch(petrolId).getSequenceNumber();
+        long dieselSecond = generateOneDigitalBatch(dieselId).getSequenceNumber();
+
+        assertThat(petrolSecond).isEqualTo(petrolFirst + 1);
+        assertThat(dieselSecond).isEqualTo(dieselFirst + 1);
+        // The diesel batch created between the two petrol batches did not disturb petrol's run.
+        assertThat(petrolFirst).isGreaterThanOrEqualTo(1L);
+        assertThat(dieselFirst).isGreaterThanOrEqualTo(1L);
+    }
+
+    private CouponBatch generateOneDigitalBatch(Long fuelTypeId) {
+        List<CouponResponse> generated = couponService.generateBulkCoupons(new GenerateBulkCouponRequest(
+                fuelTypeId, BigDecimal.valueOf(2), List.of(new DenominationLine(BigDecimal.ONE, 2)),
+                null, null, CouponType.DIGITAL, null, "tester"));
+        return findBatch(generated.getFirst().batchNumber());
+    }
+
+    @Test
+    @Transactional
+    void findIssuableForSaleDrawsStockInBatchThenBookThenPositionOrder() {
+        Long fuelTypeId = fuelTypeRepository.findAll().getFirst().getId();
+
+        // Two batches of two whole books ($1 x 200), both received into HQ / STOCKS.
+        BatchInStock older = generateWholeBooksIntoStock(fuelTypeId, 200);
+        BatchInStock newer = generateWholeBooksIntoStock(fuelTypeId, 200);
+        assertThat(older.sequenceNumber()).isLessThan(newer.sequenceNumber());
+
+        List<Coupon> picked = couponRepository.findIssuableForSale(
+                older.locationId(), fuelTypeId, BigDecimal.ONE, "STOCKS", 250);
+
+        assertThat(picked).hasSize(250);
+        // First the older batch is drained whole (200), then the newer one starts (50).
+        assertThat(picked.subList(0, 200))
+                .allSatisfy(c -> assertThat(c.getBatch().getSequenceNumber()).isEqualTo(older.sequenceNumber()));
+        assertThat(picked.subList(200, 250))
+                .allSatisfy(c -> assertThat(c.getBatch().getSequenceNumber()).isEqualTo(newer.sequenceNumber()));
+        // Within each batch: book 1 fully before book 2, ascending position within a book.
+        assertThat(picked).isSortedAccordingTo(
+                Comparator.<Coupon, Long>comparing(c -> c.getBatch().getSequenceNumber())
+                        .thenComparing(Coupon::getBookNumber)
+                        .thenComparing(Coupon::getBatchSequence));
+    }
+
+    @Test
+    @Transactional
+    void wholeBookSaleSkipsABookWithACancelledCouponAndTakesTheNextIntactBooks() {
+        Long fuelTypeId = fuelTypeRepository.findAll().getFirst().getId();
+
+        // One batch of three whole books ($1 x 300) into HQ / STOCKS.
+        BatchInStock batch = generateWholeBooksIntoStock(fuelTypeId, 300);
+
+        // Knock a hole in the front book so it is no longer 100/100 IN_STOCK.
+        Coupon holed = couponRepository
+                .findIssuableForSale(batch.locationId(), fuelTypeId, BigDecimal.ONE, "STOCKS", 1)
+                .getFirst();
+        Integer holedBook = holed.getBookNumber();
+        holed.setStatus(CouponStatus.CANCELLED);
+        couponRepository.saveAndFlush(holed);
+
+        CouponSaleResponse sale = couponSaleService.receiveSale(new ErpSaleRequest(
+                "SI-INT-WB-1", batch.locationCode(),
+                List.of(new ErpSaleRequest.Line(fuelTypeId, BigDecimal.ONE, 200, null, true)), null));
+
+        assertThat(sale.status()).isEqualTo(SaleStatus.ASSIGNED);
+        assertThat(sale.lines()).hasSize(1);
+
+        List<String> assigned = sale.lines().getFirst().couponNumbers();
+        assertThat(assigned).hasSize(200);
+        assertThat(couponRepository.findByCouponNumberIn(assigned))
+                .allSatisfy(c -> assertThat(c.getBookNumber()).isNotEqualTo(holedBook))
+                .allSatisfy(c -> assertThat(c.getStatus()).isEqualTo(CouponStatus.ALLOCATED));
+    }
+
+    private record BatchInStock(Long locationId, String locationCode, Long sequenceNumber) {}
+
+    private BatchInStock generateWholeBooksIntoStock(Long fuelTypeId, int count) {
+        List<CouponResponse> generated = couponService.generateBulkCoupons(new GenerateBulkCouponRequest(
+                fuelTypeId, BigDecimal.valueOf(count), List.of(new DenominationLine(BigDecimal.ONE, count)),
+                null, null, CouponType.PHYSICAL, LocalDate.now().plusYears(1), "tester"));
+        CouponBatch batch = findBatch(generated.getFirst().batchNumber());
+        lifecycleService.receiveBatch(batch.getId(), new ReceiveBatchRequest(null, "tester"));
+        return new BatchInStock(generated.getFirst().location().id(),
+                generated.getFirst().location().code(), batch.getSequenceNumber());
     }
 
     private CouponBatch findBatch(String batchNumber) {

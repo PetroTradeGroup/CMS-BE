@@ -1,0 +1,17 @@
+
+spring:
+  datasource:
+    url: jdbc:postgresql://postgres:5432/${DB_NAME:couponGenerator}
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: https://${SERVER_HOST}:8189/realms/${KEYCLOAK_REALM:petrotrade}
+
+app:
+  cors:
+    allowed-origins: https://${SERVER_HOST},https://${SERVER_HOST}:*,http://localhost:*,http://127.0.0.1:*
+  security:
+    jwk-set-uri: http://keycloak:8080/realms/${KEYCLOAK_REALM:petrotrade}/protocol/openid-connect/certs
+  keycloak:
+    base-url: http://keycloak:8080

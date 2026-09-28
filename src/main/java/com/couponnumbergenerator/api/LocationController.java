@@ -5,19 +5,21 @@ import com.couponnumbergenerator.dto.request.CreateLocationRequest;
 import com.couponnumbergenerator.dto.request.UpdateLocationRequest;
 import com.couponnumbergenerator.dto.response.ApiResponse;
 import com.couponnumbergenerator.dto.response.LocationResponse;
+import com.couponnumbergenerator.dto.response.PagedResponse;
 import com.couponnumbergenerator.service.LocationService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
-
-import java.util.List;
 
 @Validated
 @RestController
@@ -39,10 +41,11 @@ public class LocationController {
 
     @GetMapping
     @Operation(summary = "Get all locations, optionally filtered by active flag")
-    public ResponseEntity<ApiResponse<List<LocationResponse>>> getAll(
+    public ResponseEntity<ApiResponse<PagedResponse<LocationResponse>>> getAll(
             @Parameter(description = "Filter by active flag; omit for all locations")
-            @RequestParam(required = false) Boolean active) {
-        return ResponseEntity.ok(ApiResponse.success(locationService.getAll(active)));
+            @RequestParam(required = false) Boolean active,
+            @PageableDefault(size = 20, sort = "name", direction = Sort.Direction.ASC) Pageable pageable) {
+        return ResponseEntity.ok(ApiResponse.success(locationService.getAll(active, pageable)));
     }
 
     @GetMapping("/{id}")

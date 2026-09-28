@@ -52,6 +52,8 @@ class BatchExportServiceImplTest {
             assertThat(sheet.getRow(1).getCell(0).getStringCellValue()).isEqualTo("BAT-001");
             assertThat(sheet.getRow(1).getCell(1).getStringCellValue()).isEqualTo("Diesel");
             assertThat(sheet.getRow(1).getCell(4).getStringCellValue()).isEqualTo("100.00");
+            assertThat(sheet.getRow(0).getCell(9).getStringCellValue()).isEqualTo("Batch Seq");
+            assertThat(sheet.getRow(1).getCell(9).getStringCellValue()).isEqualTo("7");
             assertThat(sheet.getRow(2).getCell(0).getStringCellValue()).isEqualTo("BAT-002");
         }
     }
@@ -72,6 +74,7 @@ class BatchExportServiceImplTest {
     private CouponBatch batch(String batchNumber) {
         return CouponBatch.builder()
                 .batchNumber(batchNumber)
+                .sequenceNumber(7L)
                 .fuelType(FuelType.builder().name("Diesel").build())
                 .couponType(CouponType.PHYSICAL)
                 .quantity(5)

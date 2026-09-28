@@ -1,6 +1,5 @@
 package com.couponnumbergenerator.api;
 
-import com.couponnumbergenerator.config.ErpSalesProperties;
 import com.couponnumbergenerator.dto.response.ApprovalRequestResponse;
 import com.couponnumbergenerator.dto.response.TransitionResultResponse;
 import com.couponnumbergenerator.enums.ApprovalRequestType;
@@ -10,10 +9,10 @@ import com.couponnumbergenerator.exception.InvalidStatusTransitionException;
 import com.couponnumbergenerator.service.ActionOutcome;
 import com.couponnumbergenerator.service.CouponLifecycleService;
 import com.couponnumbergenerator.service.CouponService;
+import com.couponnumbergenerator.service.SecurityAuditService;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.http.MediaType;
@@ -38,10 +37,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @WebMvcTest(controllers = CouponController.class,
         properties = "spring.autoconfigure.exclude=org.springframework.boot.security.oauth2.server.resource.autoconfigure.servlet.OAuth2ResourceServerAutoConfiguration")
 @AutoConfigureMockMvc(addFilters = false)
-// Pre-existing gap, unrelated to RBAC: WebConfig (pulled into every @WebMvcTest slice as a
-// WebMvcConfigurer) wires ErpApiKeyInterceptor, which needs ErpSalesProperties — never registered
-// in this slice since @ConfigurationPropertiesScan only runs for the full application context.
-@EnableConfigurationProperties(ErpSalesProperties.class)
 class CouponControllerTransitionTest {
 
     @Autowired
@@ -52,6 +47,11 @@ class CouponControllerTransitionTest {
 
     @MockitoBean
     private CouponLifecycleService couponLifecycleService;
+
+    // WebConfig (pulled into every @WebMvcTest slice as a WebMvcConfigurer) wires
+    // SecurityAuditInterceptor, which needs this.
+    @MockitoBean
+    private SecurityAuditService securityAuditService;
 
     @Test
     void emptyCouponListFailsValidationWithFieldErrorShape() throws Exception {
@@ -127,7 +127,7 @@ class CouponControllerTransitionTest {
         ApprovalRequestResponse pendingRequest = new ApprovalRequestResponse(
                 5L, ApprovalRequestType.TRANSITION, 1, List.of(), List.of(), List.of("PU002M0000001"), null, null, null,
                 CouponStatus.ALLOCATED, null, null, null, "tester", LocalDateTime.now(),
-                ApprovalStatus.PENDING, null, null, null, null, null, null, null, List.of());
+                ApprovalStatus.PENDING, null, null, null, null, null, null, null, null, List.of());
         when(couponLifecycleService.transition(any()))
                 .thenReturn(new ActionOutcome.Pending<>(pendingRequest));
 

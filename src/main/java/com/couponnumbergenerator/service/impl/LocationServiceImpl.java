@@ -3,16 +3,16 @@ package com.couponnumbergenerator.service.impl;
 import com.couponnumbergenerator.dto.request.CreateLocationRequest;
 import com.couponnumbergenerator.dto.request.UpdateLocationRequest;
 import com.couponnumbergenerator.dto.response.LocationResponse;
+import com.couponnumbergenerator.dto.response.PagedResponse;
 import com.couponnumbergenerator.exception.LocationNotFoundException;
 import com.couponnumbergenerator.model.Location;
 import com.couponnumbergenerator.repository.LocationRepository;
 import com.couponnumbergenerator.service.LocationService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Sort;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
-import java.util.List;
 
 @Service
 @RequiredArgsConstructor
@@ -41,11 +41,11 @@ public class LocationServiceImpl implements LocationService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<LocationResponse> getAll(Boolean active) {
-        List<Location> locations = active == null
-                ? locationRepository.findAll(Sort.by("name"))
-                : locationRepository.findByActive(active);
-        return locations.stream().map(LocationResponse::from).toList();
+    public PagedResponse<LocationResponse> getAll(Boolean active, Pageable pageable) {
+        Page<Location> page = active == null
+                ? locationRepository.findAll(pageable)
+                : locationRepository.findByActive(active, pageable);
+        return PagedResponse.from(page.map(LocationResponse::from));
     }
 
     @Override

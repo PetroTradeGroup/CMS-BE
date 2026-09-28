@@ -22,7 +22,18 @@ public final class CouponBatchSpecification {
                 .and(byOriginLocation(filter.locationId()))
                 .and(createdFrom(filter.dateFrom()))
                 .and(createdTo(filter.dateTo()))
-                .and(hasStock(filter.hasStock()));
+                .and(hasStock(filter.hasStock()))
+                .and(byBatchNumber(filter.batchNumber()));
+    }
+
+    /**
+     * Partial, case-insensitive match anywhere in the batch number, so the batch list search
+     * box hits every matching batch in the dataset — not just the rows on the current page.
+     */
+    private static Specification<CouponBatch> byBatchNumber(String batchNumber) {
+        return (root, query, cb) -> batchNumber == null || batchNumber.isBlank() ? null
+                : cb.like(cb.upper(root.get("batchNumber")),
+                        "%" + batchNumber.trim().toUpperCase() + "%");
     }
 
     private static Specification<CouponBatch> byFuelType(Long fuelTypeId) {

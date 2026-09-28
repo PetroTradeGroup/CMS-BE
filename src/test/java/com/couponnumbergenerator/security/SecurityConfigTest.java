@@ -22,7 +22,7 @@ class SecurityConfigTest {
 
     private final SecurityConfig securityConfig =
             new SecurityConfig("http://localhost:8189/realms/petrotrade/protocol/openid-connect/certs",
-                    "http://localhost:8189/realms/petrotrade");
+                    "http://localhost:8189/realms/petrotrade", "http://localhost:*", null);
 
     private Jwt jwtWithClaims(Map<String, Object> extraClaims) {
         Jwt.Builder builder = Jwt.withTokenValue("token")

@@ -6,6 +6,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import java.util.Collection;
 import java.util.Optional;
 
 public interface CouponSaleRepository extends JpaRepository<CouponSale, Long> {
@@ -14,4 +15,7 @@ public interface CouponSaleRepository extends JpaRepository<CouponSale, Long> {
     Optional<CouponSale> findByBcDocumentNumber(String bcDocumentNumber);
 
     Page<CouponSale> findByStatus(SaleStatus status, Pageable pageable);
+
+    /** The retry sweep's queue: sales assigned (fully or partially) but not yet confirmed to BC. */
+    Page<CouponSale> findByStatusIn(Collection<SaleStatus> statuses, Pageable pageable);
 }

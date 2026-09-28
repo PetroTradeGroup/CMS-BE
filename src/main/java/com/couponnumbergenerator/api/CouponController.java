@@ -8,11 +8,13 @@ import com.couponnumbergenerator.dto.request.ImportLegacyCouponRequest;
 import com.couponnumbergenerator.dto.request.TransferRequest;
 import com.couponnumbergenerator.dto.request.TransitionRequest;
 import com.couponnumbergenerator.dto.response.ApiResponse;
+import com.couponnumbergenerator.dto.response.BulkLegacyImportResponse;
 import com.couponnumbergenerator.dto.response.CouponMovementResponse;
 import com.couponnumbergenerator.dto.response.CouponResponse;
 import com.couponnumbergenerator.dto.response.PagedResponse;
 import com.couponnumbergenerator.dto.response.TransferResultResponse;
 import com.couponnumbergenerator.dto.response.TransitionResultResponse;
+import com.couponnumbergenerator.enums.CouponOrigin;
 import com.couponnumbergenerator.enums.CouponStatus;
 import com.couponnumbergenerator.enums.CouponType;
 import com.couponnumbergenerator.service.ActionOutcome;
@@ -34,6 +36,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 
 import java.time.LocalDate;
@@ -81,6 +84,28 @@ public class CouponController {
             @Valid @RequestBody ImportLegacyCouponRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.success("Legacy coupon registered", couponService.importLegacyCoupon(request)));
+    }
+
+    @PostMapping(value = "/legacy-import/bulk", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasAnyRole('STOCKS_CLERK','STOCKS_CONTROLLER','ADMIN')")
+    @Operation(summary = "Register a spreadsheet of pre-existing coupons directly at ALLOCATED",
+            description = "Bulk sibling of POST /coupons/legacy-import: upload an .xlsx with a header row and "
+                    + "one legacy coupon per row — couponNumber, fuelTypeCode, denomination, locationCode "
+                    + "(optional, defaults as for the single-row endpoint), departmentCode (optional), expiryDate "
+                    + "(optional, yyyy-MM-dd). Every row is validated independently — a bad row (duplicate "
+                    + "number, unknown code) is reported in the response, not thrown, so it never blocks the "
+                    + "rest of the file. Pass dryRun=true to validate the whole file without registering "
+                    + "anything — check it before it becomes real, redeemable stock.")
+    public ResponseEntity<ApiResponse<BulkLegacyImportResponse>> importLegacyCoupons(
+            @RequestParam("file") MultipartFile file,
+            @RequestParam(defaultValue = "false") boolean dryRun,
+            @RequestParam(required = false) String performedBy) {
+        BulkLegacyImportResponse response = couponService.importLegacyCoupons(file, dryRun, performedBy);
+        String message = dryRun
+                ? "Dry run: %d of %d row(s) would be registered".formatted(response.succeeded(), response.totalRows())
+                : "%d of %d row(s) registered".formatted(response.succeeded(), response.totalRows());
+        return ResponseEntity.status(dryRun ? HttpStatus.OK : HttpStatus.CREATED)
+                .body(ApiResponse.success(message, response));
     }
 
     @PostMapping("/transitions")
@@ -162,9 +187,13 @@ public class CouponController {
             @RequestParam(required = false) String batchNumber,
             @Parameter(description = "Filter by current department ID")
             @RequestParam(required = false) Long departmentId,
+            @Parameter(description = "Search by coupon number (partial, case-insensitive) — matches across the whole dataset, not just the current page")
+            @RequestParam(required = false) String couponNumber,
+            @Parameter(description = "Filter by origin: GENERATED or LEGACY_IMPORT — e.g. to see all legacy-imported coupons")
+            @RequestParam(required = false) CouponOrigin origin,
             @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable) {
         CouponFilterRequest filter = new CouponFilterRequest(dateFrom, dateTo, fuelTypeId, status,
-                locationId, couponType, batchId, departmentId, batchNumber);
+                locationId, couponType, batchId, departmentId, batchNumber, couponNumber, origin);
         return ResponseEntity.ok(ApiResponse.success(couponService.getCoupons(filter, pageable)));
     }
 
@@ -179,9 +208,11 @@ public class CouponController {
             @RequestParam(required = false) CouponType couponType,
             @RequestParam(required = false) Long batchId,
             @RequestParam(required = false) String batchNumber,
-            @RequestParam(required = false) Long departmentId) {
+            @RequestParam(required = false) Long departmentId,
+            @RequestParam(required = false) String couponNumber,
+            @RequestParam(required = false) CouponOrigin origin) {
         CouponFilterRequest filter = new CouponFilterRequest(dateFrom, dateTo, fuelTypeId, status,
-                locationId, couponType, batchId, departmentId, batchNumber);
+                locationId, couponType, batchId, departmentId, batchNumber, couponNumber, origin);
         StreamingResponseBody body = out -> couponService.exportCoupons(filter, out);
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"coupons.csv\"")

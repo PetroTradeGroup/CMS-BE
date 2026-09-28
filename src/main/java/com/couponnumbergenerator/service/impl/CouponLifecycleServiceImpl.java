@@ -1,6 +1,7 @@
 package com.couponnumbergenerator.service.impl;
 
 import com.couponnumbergenerator.constants.CouponConstants;
+import com.couponnumbergenerator.constants.RedemptionCodes;
 import com.couponnumbergenerator.dto.request.ApprovalDecisionRequest;
 import com.couponnumbergenerator.dto.request.DenominationLine;
 import com.couponnumbergenerator.dto.request.ReceiptConfirmationRequest;
@@ -11,20 +12,23 @@ import com.couponnumbergenerator.dto.request.TransferRequest;
 import com.couponnumbergenerator.dto.request.TransitionRequest;
 import com.couponnumbergenerator.dto.response.ApprovalRequestResponse;
 import com.couponnumbergenerator.dto.response.CouponMovementResponse;
+import com.couponnumbergenerator.dto.response.CouponResponse;
 import com.couponnumbergenerator.dto.response.PagedResponse;
+import com.couponnumbergenerator.dto.response.ScanResponse;
 import com.couponnumbergenerator.dto.response.TransferResultResponse;
 import com.couponnumbergenerator.dto.response.TransferredCouponResponse;
 import com.couponnumbergenerator.dto.response.TransitionResultResponse;
 import com.couponnumbergenerator.enums.ApprovalRequestType;
 import com.couponnumbergenerator.enums.ApprovalStatus;
+import com.couponnumbergenerator.enums.CouponType;
 import com.couponnumbergenerator.enums.CouponStatus;
 import com.couponnumbergenerator.enums.MovementType;
 import com.couponnumbergenerator.enums.RequisitionStatus;
 import com.couponnumbergenerator.event.RedemptionSubmittedEvent;
 import com.couponnumbergenerator.exception.ApprovalAlreadyDecidedException;
 import com.couponnumbergenerator.exception.ApprovalRequestNotFoundException;
+import com.couponnumbergenerator.exception.CouponAlreadyPendingRedemptionException;
 import com.couponnumbergenerator.exception.CouponBatchNotFoundException;
-import com.couponnumbergenerator.exception.CouponLocationMismatchException;
 import com.couponnumbergenerator.exception.CouponNotFoundException;
 import com.couponnumbergenerator.exception.DepartmentNotFoundException;
 import com.couponnumbergenerator.exception.InvalidStatusTransitionException;
@@ -47,6 +51,8 @@ import com.couponnumbergenerator.repository.CouponRepository;
 import com.couponnumbergenerator.repository.DepartmentRepository;
 import com.couponnumbergenerator.repository.LocationRepository;
 import com.couponnumbergenerator.security.DepartmentAccessGuard;
+import com.couponnumbergenerator.security.LocationAccessGuard;
+import com.couponnumbergenerator.specification.ApprovalRequestSpecification;
 import com.couponnumbergenerator.service.ActionOutcome;
 import com.couponnumbergenerator.service.BulkConfigService;
 import com.couponnumbergenerator.service.CouponLifecycleService;
@@ -56,11 +62,14 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -71,6 +80,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import static com.couponnumbergenerator.enums.CouponStatus.IN_STOCK;
@@ -91,6 +101,7 @@ public class CouponLifecycleServiceImpl implements CouponLifecycleService {
     private final DepartmentRepository departmentRepository;
     private final CouponApprovalRequestRepository couponApprovalRequestRepository;
     private final DepartmentAccessGuard departmentAccessGuard;
+    private final LocationAccessGuard locationAccessGuard;
     private final BulkConfigService bulkConfigService;
     private final QrCodeService qrCodeService;
     private final ApplicationEventPublisher eventPublisher;
@@ -165,6 +176,13 @@ public class CouponLifecycleServiceImpl implements CouponLifecycleService {
     public void allocateForSale(List<Coupon> coupons, String performedBy, Long saleId) {
         applyTransition(coupons, CouponStatus.ALLOCATED, null, null,
                 "ERP sale", performedBy, "COUPON_SALE", saleId);
+    }
+
+    @Override
+    @Transactional
+    public void transitionForBankPurchase(List<Coupon> coupons, CouponStatus target, String reason,
+                                          String performedBy, Long purchaseId) {
+        applyTransition(coupons, target, null, null, reason, performedBy, "BANK_PURCHASE", purchaseId);
     }
 
     @Override
@@ -352,16 +370,42 @@ public class CouponLifecycleServiceImpl implements CouponLifecycleService {
     @Override
     @Transactional(readOnly = true)
     public ApprovalRequestResponse getApprovalRequest(Long approvalRequestId) {
-        return couponApprovalRequestRepository.findById(approvalRequestId)
-                .map(ApprovalRequestResponse::from)
+        CouponApprovalRequest approval = couponApprovalRequestRepository.findById(approvalRequestId)
                 .orElseThrow(() -> new ApprovalRequestNotFoundException(approvalRequestId));
+
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        String callerLocationCode = locationAccessGuard.callerLocationCode(authentication);
+        if (callerLocationCode != null) {
+            boolean stationMismatch = approval.getToLocation() == null
+                    || !callerLocationCode.equals(approval.getToLocation().getCode());
+            boolean notMine = !locationAccessGuard.callerIsTeamLeader(authentication)
+                    && !locationAccessGuard.callerUsername(authentication).equals(approval.getRequestedBy());
+            if (stationMismatch || notMine) {
+                // Station-scoped caller requesting someone else's approval — 404, not 403, so a
+                // guessed ID doesn't confirm it exists.
+                throw new ApprovalRequestNotFoundException(approvalRequestId);
+            }
+        }
+        return ApprovalRequestResponse.from(approval);
     }
 
     @Override
     @Transactional(readOnly = true)
     public PagedResponse<ApprovalRequestResponse> getApprovalRequests(ApprovalRequestType requestType, ApprovalStatus status, Pageable pageable) {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        String callerLocationCode = locationAccessGuard.callerLocationCode(authentication);
+
         Page<CouponApprovalRequest> page;
-        if (requestType == null && status == null) {
+        if (callerLocationCode != null) {
+            // Station-scoped caller: Team Leader sees every request at their site; a plain
+            // Attendant is narrowed further to just their own.
+            String callerUsername = locationAccessGuard.callerIsTeamLeader(authentication)
+                    ? null
+                    : locationAccessGuard.callerUsername(authentication);
+            page = couponApprovalRequestRepository.findAll(
+                    ApprovalRequestSpecification.withFilters(requestType, status, callerLocationCode, callerUsername),
+                    pageable);
+        } else if (requestType == null && status == null) {
             page = couponApprovalRequestRepository.findAll(pageable);
         } else if (requestType == null) {
             page = couponApprovalRequestRepository.findByStatus(status, pageable);
@@ -376,27 +420,66 @@ public class CouponLifecycleServiceImpl implements CouponLifecycleService {
     @Override
     @Transactional
     public ApprovalRequestResponse submitRedemption(RedemptionSubmitRequest request) {
+        // Only station staff (Attendant/Team Leader) redeem: the signed token decides where and who,
+        // never the request body — it can't be spoofed to claim a different station.
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        String callerLocationCode = locationAccessGuard.callerLocationCode(authentication);
+        if (callerLocationCode == null) {
+            throw new AccessDeniedException("Your account isn't assigned to a station — ask an admin to set its location");
+        }
+        Location location = locationRepository.findByCode(callerLocationCode)
+                .orElseThrow(() -> new LocationNotFoundException(callerLocationCode));
+        String performedBy = locationAccessGuard.callerUsername(authentication);
+
         Set<String> couponNumbers = new LinkedHashSet<>();
         if (request.scannedPayloads() != null) {
             request.scannedPayloads().forEach(payload -> couponNumbers.add(qrCodeService.decodeAndVerify(payload)));
         }
-        if (request.couponNumbers() != null) {
-            couponNumbers.addAll(request.couponNumbers());
+        Set<String> typedNumbers = request.couponNumbers() == null ? Set.of() : Set.copyOf(request.couponNumbers());
+        couponNumbers.addAll(typedNumbers);
+        if (request.redemptionCodes() != null) {
+            couponNumbers.addAll(resolveRedemptionCodes(request.redemptionCodes(), performedBy));
         }
         if (couponNumbers.isEmpty()) {
-            throw new IllegalArgumentException("At least one of scannedPayloads or couponNumbers is required");
+            throw new IllegalArgumentException(
+                    "At least one of scannedPayloads, couponNumbers or redemptionCodes is required");
         }
         validateBatchSize(couponNumbers.size());
-        List<Coupon> coupons = loadCoupons(couponNumbers);
+        // Locked, so a concurrent submission of the same coupon waits here and then sees ours as
+        // pending. Sorted so chunks take their locks in one global order (no deadlocks).
+        List<Coupon> coupons = loadCoupons(new TreeSet<>(couponNumbers), couponRepository::lockByCouponNumberIn);
 
-        Location location = resolveLocation(request.locationId());
+        // A virtual coupon's number isn't secret (it shows in lists and exports) — only the QR or
+        // the customer's redemption code proves the customer is holding it.
         for (Coupon coupon : coupons) {
-            if (!coupon.getCurrentLocation().getId().equals(location.getId())) {
-                throw new CouponLocationMismatchException(coupon.getCouponNumber(),
-                        coupon.getCurrentLocation().getCode(), location.getCode());
+            if (coupon.getCouponType() == CouponType.DIGITAL && typedNumbers.contains(coupon.getCouponNumber())) {
+                throw new IllegalArgumentException(
+                        "Virtual coupon %s must be redeemed by QR scan or redemption code, not its coupon number"
+                                .formatted(coupon.getCouponNumber()));
             }
+        }
+
+        // Single use from the moment of submission: fuel is dispensed on submit, long before posting.
+        List<String> alreadyPending = couponApprovalRequestRepository.findCouponNumbersInRequests(
+                ApprovalRequestType.REDEMPTION, ApprovalStatus.PENDING, couponNumbers);
+        if (!alreadyPending.isEmpty()) {
+            throw new CouponAlreadyPendingRedemptionException(alreadyPending);
+        }
+
+        // No currentLocation check here: REDEEMED is only reachable from ALLOCATED
+        // (CouponStateMachine), meaning every coupon redeemable here has already been sold to a
+        // customer — they can redeem it at any site, not just wherever it happened to be stocked
+        // before the sale.
+        LocalDate today = LocalDate.now();
+        for (Coupon coupon : coupons) {
             if (!CouponStateMachine.canTransition(coupon.getStatus(), CouponStatus.REDEEMED)) {
                 throw new InvalidStatusTransitionException(coupon.getCouponNumber(), coupon.getStatus(), CouponStatus.REDEEMED);
+            }
+            // ponytail: checked at the pump, not swept — nothing moves coupons to EXPIRED yet; add a
+            // nightly job if reports need expired stock counted by status.
+            if (coupon.getExpiryDate() != null && coupon.getExpiryDate().isBefore(today)) {
+                throw new IllegalArgumentException("Coupon %s expired on %s".formatted(
+                        coupon.getCouponNumber(), coupon.getExpiryDate()));
             }
         }
 
@@ -408,11 +491,12 @@ public class CouponLifecycleServiceImpl implements CouponLifecycleService {
                 .batchSequences(batchSequences(coupons))
                 .targetStatus(CouponStatus.REDEEMED)
                 .toLocation(location)
+                .carRegistrationNumber(request.carRegistrationNumber().trim().toUpperCase())
                 .reason(request.reason())
-                .requestedBy(request.performedBy())
+                .requestedBy(performedBy)
                 .build());
         log.info("Submitted {} coupon(s) for redemption at {} by {} (request #{})",
-                coupons.size(), location.getCode(), request.performedBy(), approval.getId());
+                coupons.size(), location.getCode(), performedBy, approval.getId());
         eventPublisher.publishEvent(new RedemptionSubmittedEvent(approval.getId()));
         return ApprovalRequestResponse.from(approval);
     }
@@ -429,7 +513,9 @@ public class CouponLifecycleServiceImpl implements CouponLifecycleService {
 
         List<Coupon> coupons = loadCoupons(new LinkedHashSet<>(approval.getCouponNumbers()));
         String movementReason = request.reason() != null ? request.reason() : approval.getReason();
-        applyTransition(coupons, CouponStatus.REDEEMED, null, null, movementReason, request.performedBy(),
+        // toLocation moves the coupon's currentLocation to the redeeming site — it may differ from
+        // wherever the coupon was stocked/sold, since an ALLOCATED coupon is redeemable anywhere.
+        applyTransition(coupons, CouponStatus.REDEEMED, approval.getToLocation(), null, movementReason, request.performedBy(),
                 "REDEMPTION_REQUEST", approval.getId());
 
         approval.setDocumentNumber(request.documentNumber());
@@ -700,16 +786,61 @@ public class CouponLifecycleServiceImpl implements CouponLifecycleService {
     }
 
     private List<Coupon> loadCoupons(Set<String> couponNumbers) {
+        return loadCoupons(couponNumbers, couponRepository::findByCouponNumberIn);
+    }
+
+    private List<Coupon> loadCoupons(Set<String> couponNumbers, Function<List<String>, List<Coupon>> finder) {
         List<String> numbers = List.copyOf(couponNumbers);
         List<Coupon> coupons = new ArrayList<>(numbers.size());
         for (int i = 0; i < numbers.size(); i += LOAD_CHUNK_SIZE) {
-            coupons.addAll(couponRepository.findByCouponNumberIn(
-                    numbers.subList(i, Math.min(i + LOAD_CHUNK_SIZE, numbers.size()))));
+            coupons.addAll(finder.apply(numbers.subList(i, Math.min(i + LOAD_CHUNK_SIZE, numbers.size()))));
         }
         if (coupons.size() < couponNumbers.size()) {
             throw new CouponNotFoundException(describeMissing(couponNumbers, coupons));
         }
         return coupons;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public ScanResponse previewRedemption(String couponNumber) {
+        return preview(couponRepository.findByCouponNumber(couponNumber)
+                .orElseThrow(() -> new CouponNotFoundException("Coupon not found: " + couponNumber)));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public ScanResponse previewRedemptionByCode(String redemptionCode) {
+        return preview(couponRepository.findByRedemptionCode(RedemptionCodes.normalize(redemptionCode))
+                .orElseThrow(() -> {
+                    // Repeated misses from one user may be someone guessing codes — worth watching.
+                    log.warn("Redemption code lookup by {} found nothing", locationAccessGuard.callerUsername(
+                            SecurityContextHolder.getContext().getAuthentication()));
+                    return new CouponNotFoundException("No coupon for that redemption code");
+                }));
+    }
+
+    private ScanResponse preview(Coupon coupon) {
+        boolean pending = !couponApprovalRequestRepository.findCouponNumbersInRequests(
+                ApprovalRequestType.REDEMPTION, ApprovalStatus.PENDING, List.of(coupon.getCouponNumber())).isEmpty();
+        return ScanResponse.of(CouponResponse.from(coupon), pending, LocalDate.now());
+    }
+
+    /** Maps typed redemption codes to coupon numbers; any unknown code fails the whole submission. */
+    private Set<String> resolveRedemptionCodes(List<String> rawCodes, String performedBy) {
+        Set<String> codes = new LinkedHashSet<>();
+        rawCodes.forEach(code -> codes.add(RedemptionCodes.normalize(code)));
+        List<Coupon> found = couponRepository.findByRedemptionCodeIn(codes);
+        if (found.size() < codes.size()) {
+            Set<String> unknown = new LinkedHashSet<>(codes);
+            found.forEach(coupon -> unknown.remove(coupon.getRedemptionCode()));
+            // Repeated unknown codes from one user may be someone guessing — worth watching in the logs.
+            log.warn("Redemption by {} rejected: {} unknown redemption code(s)", performedBy, unknown.size());
+            throw new CouponNotFoundException("Unknown redemption code(s): " + String.join(", ", unknown));
+        }
+        Set<String> numbers = new LinkedHashSet<>();
+        found.forEach(coupon -> numbers.add(coupon.getCouponNumber()));
+        return numbers;
     }
 
     private String describeMissing(Set<String> requested, List<Coupon> found) {

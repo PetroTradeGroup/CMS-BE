@@ -3,6 +3,8 @@ package com.couponnumbergenerator.model;
 import jakarta.persistence.*;
 import lombok.*;
 
+import java.math.BigDecimal;
+
 @Entity
 @Table(name = "fuel_types")
 @Getter
@@ -24,6 +26,10 @@ public class FuelType {
 
     @Column(length = 100)
     private String description;
+
+    /** Price per litre charged through the bank channel; null = not on sale there. */
+    @Column(name = "price_per_litre", precision = 10, scale = 2)
+    private BigDecimal pricePerLitre;
 
     @Column(nullable = false)
     @Builder.Default

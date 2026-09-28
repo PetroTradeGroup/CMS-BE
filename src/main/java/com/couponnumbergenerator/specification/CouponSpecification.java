@@ -1,6 +1,7 @@
 package com.couponnumbergenerator.specification;
 
 import com.couponnumbergenerator.dto.request.CouponFilterRequest;
+import com.couponnumbergenerator.enums.CouponOrigin;
 import com.couponnumbergenerator.enums.CouponStatus;
 import com.couponnumbergenerator.enums.CouponType;
 import com.couponnumbergenerator.model.Coupon;
@@ -23,7 +24,9 @@ public final class CouponSpecification {
                 .and(byDepartment(filter.departmentId()))
                 .and(byCouponType(filter.couponType()))
                 .and(byBatch(filter.batchId()))
-                .and(byBatchNumber(filter.batchNumber()));
+                .and(byBatchNumber(filter.batchNumber()))
+                .and(byCouponNumber(filter.couponNumber()))
+                .and(byOrigin(filter.origin()));
     }
 
     /**
@@ -86,5 +89,19 @@ public final class CouponSpecification {
         return (root, query, cb) -> batchNumber == null || batchNumber.isBlank() ? null
                 : cb.equal(cb.upper(root.get("batch").get("batchNumber")),
                         batchNumber.trim().toUpperCase());
+    }
+
+    /**
+     * Partial, case-insensitive match anywhere in the coupon number, so the frontend's search
+     * box hits every matching coupon in the dataset — not just the rows on the current page.
+     */
+    private static Specification<Coupon> byCouponNumber(String couponNumber) {
+        return (root, query, cb) -> couponNumber == null || couponNumber.isBlank() ? null
+                : cb.like(cb.upper(root.get("couponNumber")),
+                        "%" + couponNumber.trim().toUpperCase() + "%");
+    }
+
+    private static Specification<Coupon> byOrigin(CouponOrigin origin) {
+        return (root, query, cb) -> origin == null ? null : cb.equal(root.get("origin"), origin);
     }
 }

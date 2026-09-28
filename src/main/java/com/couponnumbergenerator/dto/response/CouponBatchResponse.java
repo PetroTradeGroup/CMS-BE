@@ -12,6 +12,7 @@ import java.util.Map;
 public record CouponBatchResponse(
         Long id,
         String batchNumber,
+        Long sequenceNumber,
         FuelTypeResponse fuelType,
         CouponType couponType,
         int quantity,
@@ -30,6 +31,7 @@ public record CouponBatchResponse(
         return new CouponBatchResponse(
                 batch.getId(),
                 batch.getBatchNumber(),
+                batch.getSequenceNumber(),
                 FuelTypeResponse.from(batch.getFuelType()),
                 batch.getCouponType(),
                 batch.getQuantity(),

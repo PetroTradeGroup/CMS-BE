@@ -49,9 +49,9 @@ class CouponBatchServiceImplTest {
 
         String[] lines = out.toString(StandardCharsets.UTF_8).split("\r\n");
         assertThat(lines).containsExactly(
-                "coupon_number,fuel_type,denomination,expiry_date,batch_number,batch_sequence,book_number,qr_payload",
-                "PTC-000001,Diesel,50.00,2026-12-31,BATCH-001,1,1,PTC-000001|signed",
-                "PTC-000002,Diesel,50.00,2026-12-31,BATCH-001,2,1,PTC-000002|signed");
+                "coupon_number,fuel_type,denomination,expiry_date,batch_number,batch_sequence_number,batch_sequence,book_number,qr_payload",
+                "PTC-000001,Diesel,50.00,2026-12-31,BATCH-001,7,1,1,PTC-000001|signed",
+                "PTC-000002,Diesel,50.00,2026-12-31,BATCH-001,7,2,1,PTC-000002|signed");
     }
 
     @Test
@@ -83,7 +83,7 @@ class CouponBatchServiceImplTest {
                 .fuelType(FuelType.builder().name("Diesel").build())
                 .denomination(new BigDecimal("50.00"))
                 .expiryDate(LocalDate.of(2026, 12, 31))
-                .batch(CouponBatch.builder().batchNumber("BATCH-001").build())
+                .batch(CouponBatch.builder().batchNumber("BATCH-001").sequenceNumber(7L).build())
                 .batchSequence(sequence)
                 .bookNumber(1)
                 .build();

@@ -1,0 +1,285 @@
+{
+  "realm": "petrotrade",
+  "enabled": true,
+  "sslRequired": "none",
+  "registrationAllowed": false,
+
+  "roles": {
+    "realm": [
+      { "name": "STOCKS_CLERK", "description": "Generate coupons, receive printed batches, ship transfers, process redemptions" },
+      { "name": "STOCKS_CONTROLLER", "description": "Same as Stocks Clerk plus approval sign-off" },
+      { "name": "SALES_CLERK", "description": "Raise requisitions" },
+      { "name": "SALES_EXECUTIVE", "description": "Raise requisitions, approve/receive transfers" },
+      { "name": "ACCOUNTS_CLERK", "description": "Raise requisitions, invoicing" },
+      { "name": "ATTENDANT", "description": "Scan coupons at the pump" },
+      { "name": "TEAM_LEADER", "description": "Same as Attendant plus station-level oversight" },
+      { "name": "ADMIN", "description": "Platform: master data, config, ERP review" },
+      { "name": "AUDITOR", "description": "Platform: read-only reporting" },
+      { "name": "ERP_INTEGRATION", "description": "Machine role: Business Central posting sales to POST /erp/sales" },
+      { "name": "BANK_INTEGRATION", "description": "Machine role: partner bank selling virtual coupons via /bank" }
+    ]
+  },
+
+  "groups": [
+    {
+      "name": "STOCKS",
+      "path": "/STOCKS",
+      "realmRoles": ["STOCKS_CLERK", "STOCKS_CONTROLLER"]
+    },
+    {
+      "name": "COMMERCIAL",
+      "path": "/COMMERCIAL",
+      "realmRoles": ["SALES_CLERK", "SALES_EXECUTIVE", "ACCOUNTS_CLERK"]
+    },
+    {
+      "name": "RETAIL",
+      "path": "/RETAIL",
+      "realmRoles": ["ATTENDANT"]
+    },
+    {
+      "name": "PLATFORM",
+      "path": "/PLATFORM",
+      "realmRoles": ["ADMIN", "AUDITOR"]
+    }
+  ],
+
+  "components": {
+    "org.keycloak.userprofile.UserProfileProvider": [
+      {
+        "providerId": "declarative-user-profile",
+        "config": {
+          "kc.user.profile.config": [
+            "{\"attributes\":[{\"name\":\"username\",\"displayName\":\"${username}\",\"validations\":{\"length\":{\"min\":3,\"max\":255},\"username-prohibited-characters\":{},\"up-username-not-idn-homograph\":{}},\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\",\"user\"]},\"multivalued\":false},{\"name\":\"email\",\"displayName\":\"${email}\",\"validations\":{\"email\":{},\"length\":{\"max\":255}},\"required\":{\"roles\":[\"user\"]},\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\",\"user\"]},\"multivalued\":false},{\"name\":\"firstName\",\"displayName\":\"${firstName}\",\"validations\":{\"length\":{\"max\":255},\"person-name-prohibited-characters\":{}},\"required\":{\"roles\":[\"user\"]},\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\",\"user\"]},\"multivalued\":false},{\"name\":\"lastName\",\"displayName\":\"${lastName}\",\"validations\":{\"length\":{\"max\":255},\"person-name-prohibited-characters\":{}},\"required\":{\"roles\":[\"user\"]},\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\",\"user\"]},\"multivalued\":false},{\"name\":\"department\",\"displayName\":\"Department\",\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\"]},\"multivalued\":false},{\"name\":\"locationCode\",\"displayName\":\"Location Code\",\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\"]},\"multivalued\":false}],\"groups\":[{\"name\":\"user-metadata\",\"displayHeader\":\"User metadata\",\"displayDescription\":\"Attributes, which refer to user metadata\"}]}"
+          ]
+        }
+      }
+    ]
+  },
+
+  "clients": [
+    {
+      "clientId": "coupon-backend",
+      "name": "Coupon Backend / Internal Web",
+      "description": "Public client, no secret — a browser SPA can't keep one confidential. Authorization Code + PKCE only, no ROPC.",
+      "enabled": true,
+      "publicClient": true,
+      "protocol": "openid-connect",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": ["http://localhost:8580/*", "http://localhost:5173/*", "http://196.43.101.217/*", "https://196.43.101.217/*", "https://196.43.101.217:8580/*", "https://test.petrotrade.co.zw/*", "https://test.petrotrade.co.zw:8580/*", "https://oauth.pstmn.io/v1/callback"],
+      "webOrigins": ["+"],
+      "attributes": {
+        "pkce.code.challenge.method": "S256"
+      },
+      "protocolMappers": [
+        {
+          "name": "department",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "department",
+            "claim.name": "department",
+            "jsonType.label": "String",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true",
+            "multivalued": "false"
+          }
+        },
+        {
+          "name": "locationCode",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "locationCode",
+            "claim.name": "locationCode",
+            "jsonType.label": "String",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true",
+            "multivalued": "false"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "coupon-attendant-mobile",
+      "name": "Coupon Attendant Mobile",
+      "description": "AD-6: public client, PKCE, no embedded secret — token stored in Keychain/Keystore on-device.",
+      "enabled": true,
+      "publicClient": true,
+      "protocol": "openid-connect",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "redirectUris": ["com.petrotrade.attendant://callback", "http://localhost:19006/*", "http://localhost:8081/*", "https://oauth.pstmn.io/v1/callback", "exp://*"],
+      "attributes": {
+        "pkce.code.challenge.method": "S256"
+      },
+      "protocolMappers": [
+        {
+          "name": "department",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "department",
+            "claim.name": "department",
+            "jsonType.label": "String",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true",
+            "multivalued": "false"
+          }
+        },
+        {
+          "name": "locationCode",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "locationCode",
+            "claim.name": "locationCode",
+            "jsonType.label": "String",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true",
+            "multivalued": "false"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "coupon-admin-api",
+      "name": "Coupon Backend / Admin API",
+      "description": "Confidential service account for our backend to call Keycloak's Admin API (registering attendants). Never exposed to a client. Local-dev secret only.",
+      "enabled": true,
+      "publicClient": false,
+      "protocol": "openid-connect",
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "local-dev-admin-api-secret"
+    },
+    {
+      "clientId": "erp-integration",
+      "name": "ERP Integration (Business Central)",
+      "description": "Confidential service account for Business Central to call POST /erp/sales via OAuth2 Client Credentials. Carries only the ERP_INTEGRATION realm role. Local-dev secret only — issue a real one per environment.",
+      "enabled": true,
+      "publicClient": false,
+      "protocol": "openid-connect",
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "local-dev-erp-integration-secret",
+      "webOrigins": ["http://localhost:8580", "https://196.43.101.217:8580", "https://test.petrotrade.co.zw:8580"]
+    },
+    {
+      "clientId": "bank-integration",
+      "name": "Bank Integration",
+      "description": "Confidential service account for the partner bank to call /bank via OAuth2 Client Credentials. Carries only the BANK_INTEGRATION realm role. Local-dev secret only — issue a real one per environment.",
+      "enabled": true,
+      "publicClient": false,
+      "protocol": "openid-connect",
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "local-dev-bank-integration-secret"
+    }
+  ],
+
+  "users": [
+    {
+      "username": "stocks.clerk",
+      "enabled": true,
+      "email": "stocks.clerk@petrotrade.dev",
+      "emailVerified": true,
+      "firstName": "Stocks",
+      "lastName": "Clerk",
+      "credentials": [{ "type": "password", "value": "dev", "temporary": false }],
+      "groups": ["/STOCKS"],
+      "attributes": { "department": ["STOCKS"] }
+    },
+    {
+      "username": "stocks.controller",
+      "enabled": true,
+      "email": "stocks.controller@petrotrade.dev",
+      "emailVerified": true,
+      "firstName": "Stocks",
+      "lastName": "Controller",
+      "credentials": [{ "type": "password", "value": "dev", "temporary": false }],
+      "groups": ["/STOCKS"],
+      "attributes": { "department": ["STOCKS"] }
+    },
+    {
+      "username": "sales.executive",
+      "enabled": true,
+      "email": "sales.executive@petrotrade.dev",
+      "emailVerified": true,
+      "firstName": "Sales",
+      "lastName": "Executive",
+      "credentials": [{ "type": "password", "value": "dev", "temporary": false }],
+      "groups": ["/COMMERCIAL"],
+      "attributes": { "department": ["COMMERCIAL"] }
+    },
+    {
+      "username": "attendant1",
+      "enabled": true,
+      "email": "attendant1@petrotrade.dev",
+      "emailVerified": true,
+      "firstName": "Retail",
+      "lastName": "Attendant",
+      "credentials": [{ "type": "password", "value": "dev", "temporary": false }],
+      "groups": ["/RETAIL"],
+      "attributes": { "department": ["RETAIL"], "locationCode": ["STN-04"] }
+    },
+    {
+      "username": "team.leader",
+      "enabled": true,
+      "email": "team.leader@petrotrade.dev",
+      "emailVerified": true,
+      "firstName": "Retail",
+      "lastName": "TeamLeader",
+      "credentials": [{ "type": "password", "value": "dev", "temporary": false }],
+      "groups": ["/RETAIL"],
+      "realmRoles": ["TEAM_LEADER"],
+      "attributes": { "department": ["RETAIL"], "locationCode": ["STN-04"] }
+    },
+    {
+      "username": "service-account-coupon-admin-api",
+      "enabled": true,
+      "serviceAccountClientId": "coupon-admin-api",
+      "clientRoles": {
+        "realm-management": ["manage-users", "view-users", "query-groups"]
+      }
+    },
+    {
+      "username": "service-account-erp-integration",
+      "enabled": true,
+      "serviceAccountClientId": "erp-integration",
+      "realmRoles": ["ERP_INTEGRATION"]
+    },
+    {
+      "username": "service-account-bank-integration",
+      "enabled": true,
+      "serviceAccountClientId": "bank-integration",
+      "realmRoles": ["BANK_INTEGRATION"]
+    },
+    {
+      "username": "admin.user",
+      "enabled": true,
+      "email": "admin.user@petrotrade.dev",
+      "emailVerified": true,
+      "firstName": "Platform",
+      "lastName": "Admin",
+      "credentials": [{ "type": "password", "value": "dev", "temporary": false }],
+      "groups": ["/PLATFORM"],
+      "attributes": { "department": ["STOCKS"] }
+    }
+  ]
+}

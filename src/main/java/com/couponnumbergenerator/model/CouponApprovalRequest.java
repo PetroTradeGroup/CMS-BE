@@ -143,6 +143,10 @@ public class CouponApprovalRequest {
     @Column(name = "document_number", length = 50)
     private String documentNumber;
 
+    /** REDEMPTION-only: the vehicle the attendant recorded this redemption against, asserted at submission. */
+    @Column(name = "car_registration_number", length = 20)
+    private String carRegistrationNumber;
+
     @PrePersist
     protected void onCreate() {
         requestedAt = LocalDateTime.now();

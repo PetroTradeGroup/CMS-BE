@@ -1,0 +1,681 @@
+<title>Coupon Platform Access Control</title>
+<style>
+  :root {
+    --paper: #f0f1ec;
+    --paper-raised: #e6e7e0;
+    --paper-sunken: #dedfd7;
+    --ink: #1c2024;
+    --ink-soft: #565f66;
+    --ink-faint: #838b8f;
+    --line: #cfd1c6;
+    --accent: #a5701f;
+    --accent-deep: #7d5417;
+    --accent-soft: #e9dcc4;
+    --rust: #9c3d2e;
+    --rust-soft: #f1ddd6;
+    --moss: #43604c;
+    --moss-soft: #dde6dc;
+    --shadow: 220 15% 15%;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper: #15181b;
+      --paper-raised: #1c2023;
+      --paper-sunken: #101315;
+      --ink: #eae8e2;
+      --ink-soft: #a3aaad;
+      --ink-faint: #6d7478;
+      --line: #303538;
+      --accent: #d9a44e;
+      --accent-deep: #f0bd70;
+      --accent-soft: #3a2f1a;
+      --rust: #d97a67;
+      --rust-soft: #3a2420;
+      --moss: #8bab90;
+      --moss-soft: #22302a;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --paper: #15181b;
+    --paper-raised: #1c2023;
+    --paper-sunken: #101315;
+    --ink: #eae8e2;
+    --ink-soft: #a3aaad;
+    --ink-faint: #6d7478;
+    --line: #303538;
+    --accent: #d9a44e;
+    --accent-deep: #f0bd70;
+    --accent-soft: #3a2f1a;
+    --rust: #d97a67;
+    --rust-soft: #3a2420;
+    --moss: #8bab90;
+    --moss-soft: #22302a;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
+    font-size: 17px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    padding: 0 0 6rem;
+  }
+
+  .wrap { max-width: 760px; margin: 0 auto; padding: 0 1.5rem; }
+  .wide { max-width: 860px; margin: 0 auto; padding: 0 1.5rem; }
+
+  h1, h2, h3, .eyebrow, .pill, .tag, th {
+    font-family: Rockwell, "Roboto Slab", "Sitka Small", Georgia, serif;
+  }
+
+  code, .mono, .claim, td.mono {
+    font-family: Consolas, "SFMono-Regular", ui-monospace, Menlo, monospace;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ---------- Masthead ---------- */
+  .masthead {
+    border-bottom: 1px solid var(--line);
+    padding: 3rem 0 2rem;
+    margin-bottom: 3rem;
+  }
+  .masthead .meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    font-size: 0.78rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin-bottom: 1.4rem;
+  }
+  .masthead h1 {
+    font-size: clamp(2rem, 5vw, 2.7rem);
+    font-weight: 700;
+    line-height: 1.08;
+    margin: 0 0 0.6rem;
+    text-wrap: balance;
+    letter-spacing: -0.01em;
+  }
+  .masthead .dek {
+    font-size: 1.08rem;
+    color: var(--ink-soft);
+    max-width: 46ch;
+    margin: 0 0 1.5rem;
+  }
+  .status-row { display: flex; gap: 0.6rem; flex-wrap: wrap; }
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4em;
+    font-size: 0.72rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    font-weight: 600;
+    padding: 0.38em 0.85em;
+    border-radius: 3px;
+    border: 1px solid var(--accent);
+    color: var(--accent-deep);
+    background: var(--accent-soft);
+  }
+  .pill.neutral {
+    border-color: var(--line);
+    color: var(--ink-soft);
+    background: var(--paper-raised);
+  }
+
+  /* ---------- Sections ---------- */
+  section { margin-bottom: 3.4rem; }
+  .eyebrow {
+    font-size: 0.76rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    font-weight: 700;
+    color: var(--accent-deep);
+    display: flex;
+    align-items: center;
+    gap: 0.7em;
+    margin-bottom: 0.9rem;
+  }
+  .eyebrow::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background: var(--line);
+  }
+  h2 {
+    font-size: 1.5rem;
+    font-weight: 700;
+    margin: 0 0 0.9rem;
+    text-wrap: balance;
+  }
+  h3 {
+    font-size: 1.05rem;
+    font-weight: 700;
+    margin: 1.6rem 0 0.6rem;
+  }
+  p { margin: 0 0 1rem; }
+  .lede { font-size: 1.12rem; color: var(--ink); }
+  strong { color: var(--ink); }
+  .ink-soft { color: var(--ink-soft); }
+
+  ul.plain, ol.plain { margin: 0 0 1rem; padding-left: 1.3rem; }
+  ul.plain li, ol.plain li { margin-bottom: 0.4rem; }
+
+  .callout {
+    border-left: 3px solid var(--rust);
+    background: var(--rust-soft);
+    padding: 1rem 1.2rem;
+    border-radius: 0 4px 4px 0;
+    font-size: 0.96rem;
+    margin: 1.2rem 0;
+  }
+  .callout .tag {
+    display: block;
+    font-size: 0.7rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    font-weight: 700;
+    color: var(--rust);
+    margin-bottom: 0.3rem;
+  }
+  .callout.good {
+    border-left-color: var(--moss);
+    background: var(--moss-soft);
+  }
+  .callout.good .tag { color: var(--moss); }
+
+  /* ---------- Figures ---------- */
+  figure {
+    margin: 1.6rem 0 2rem;
+    padding: 1.4rem 1.3rem 1.1rem;
+    background: var(--paper-raised);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+  }
+  figure svg { display: block; width: 100%; height: auto; overflow: visible; }
+  figcaption {
+    font-size: 0.86rem;
+    color: var(--ink-soft);
+    margin-top: 0.9rem;
+    padding-top: 0.8rem;
+    border-top: 1px solid var(--line);
+  }
+  .diagram-scroll { overflow-x: auto; }
+
+  /* ---------- Table ---------- */
+  .table-scroll { overflow-x: auto; margin: 1.4rem 0; }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.92rem;
+    min-width: 620px;
+  }
+  th {
+    text-align: left;
+    font-size: 0.72rem;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    font-weight: 700;
+    color: var(--ink-faint);
+    padding: 0.55rem 0.9rem;
+    border-bottom: 1px solid var(--line);
+  }
+  td {
+    padding: 0.75rem 0.9rem;
+    border-bottom: 1px solid var(--line);
+    vertical-align: top;
+    font-family: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+  }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: var(--paper-sunken); }
+  .role-name {
+    font-family: Rockwell, "Roboto Slab", Georgia, serif;
+    font-weight: 700;
+    color: var(--accent-deep);
+    white-space: nowrap;
+  }
+  .endpoint-list { font-size: 0.85rem; color: var(--ink-soft); }
+  .endpoint-list .mono { color: var(--ink); }
+
+  /* ---------- Effort grid ---------- */
+  .effort-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1px;
+    background: var(--line);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    overflow: hidden;
+    margin: 1.4rem 0;
+  }
+  .effort-cell { background: var(--paper-raised); padding: 1.2rem 1.3rem; }
+  .effort-cell h4 {
+    font-family: Rockwell, "Roboto Slab", Georgia, serif;
+    font-size: 0.78rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin: 0 0 0.7rem;
+  }
+  .effort-cell ul { margin: 0; padding-left: 1.1rem; font-size: 0.9rem; }
+  .effort-cell li { margin-bottom: 0.35rem; }
+  @media (max-width: 560px) {
+    .effort-grid { grid-template-columns: 1fr; }
+  }
+
+  /* ---------- Next steps ---------- */
+  .steps { list-style: none; margin: 0; padding: 0; counter-reset: step; }
+  .steps li {
+    counter-increment: step;
+    display: flex;
+    gap: 1rem;
+    padding: 0.9rem 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .steps li:last-child { border-bottom: none; }
+  .steps li::before {
+    content: counter(step);
+    font-family: Rockwell, "Roboto Slab", Georgia, serif;
+    font-weight: 700;
+    font-size: 0.85rem;
+    color: var(--accent-deep);
+    background: var(--accent-soft);
+    width: 1.7rem;
+    height: 1.7rem;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .steps .step-body strong { display: block; margin-bottom: 0.15rem; }
+  .steps .step-body span { color: var(--ink-soft); font-size: 0.92rem; }
+
+  footer {
+    max-width: 760px;
+    margin: 4rem auto 0;
+    padding: 1.5rem 1.5rem 0;
+    border-top: 1px solid var(--line);
+    font-size: 0.82rem;
+    color: var(--ink-faint);
+  }
+
+  a { color: var(--accent-deep); }
+  a:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
+  }
+</style>
+
+<div class="masthead wrap">
+  <div class="meta">
+    <span>Internal memo &middot; Petrotrade CMS</span>
+    <span>14 August 2026</span>
+  </div>
+  <h1>Access control for the coupon platform</h1>
+  <p class="dek">Every requisition, approval, and coupon-generation endpoint is open to anyone who can reach the API. This is the reasoning behind the fix, and how a role check actually reaches an endpoint.</p>
+  <div class="status-row">
+    <span class="pill">Decision &mdash; Keycloak (OAuth2/OIDC)</span>
+    <span class="pill neutral">Owner &mdash; Backend</span>
+  </div>
+</div>
+
+<div class="wrap">
+
+<section>
+  <div class="eyebrow">Context</div>
+  <p class="lede">The API has no authentication layer today. There is no <code class="mono">User</code> model, no login endpoint, and no role check anywhere in the codebase.</p>
+  <p>Concretely, that means the following are all reachable by anyone with network access to the service:</p>
+  <ul class="plain">
+    <li><strong>Requisitions</strong> &mdash; create, fulfill, auto-fulfill, or reject a depot's litres request</li>
+    <li><strong>Approvals</strong> &mdash; approve or reject a transfer, confirm receipt at the destination</li>
+    <li><strong>Coupons</strong> &mdash; generate single or bulk batches, force a state transition, transfer between locations</li>
+    <li><strong>Configuration</strong> &mdash; change the bulk-generation limit, page-size limit, or coupon validity period</li>
+  </ul>
+  <div class="callout">
+    <span class="tag">The gap</span>
+    Anyone who can reach the API can approve their own requisition, or mint coupons, with no record of who did it.
+  </div>
+</section>
+
+<section>
+  <div class="eyebrow">The decision</div>
+  <h2>Keycloak issues tokens, Spring Security checks them</h2>
+  <p>Keycloak runs as its own service and becomes the system of record for logins, passwords, and roles. It issues a signed JWT on login, with the user's roles carried as a claim inside the token. Spring Security's OAuth2 resource-server support verifies that token on every request &mdash; no custom login or token code lives in this application.</p>
+  <p>Two things about this project made Keycloak the better call over hand-rolling JWT auth in-house:</p>
+  <ul class="plain">
+    <li>Single sign-on is already on the roadmap &mdash; Keycloak is built for exactly that, a self-issued token isn't.</li>
+    <li>The ERP integration already speaks OAuth2 &mdash; Keycloak is an OAuth2/OIDC provider natively, so it's the same protocol on both sides instead of two auth systems to reconcile later.</li>
+  </ul>
+</section>
+
+<section>
+  <div class="eyebrow">Why not self-issued JWT</div>
+  <h2>Same validation step, different amount of code behind it</h2>
+  <p>Spring Security validates a JWT the same way regardless of who signed it. The difference is everything that has to exist <em>before</em> that validation step &mdash; and who maintains it.</p>
+
+  <figure class="diagram-scroll">
+    <svg viewBox="0 0 820 380" role="img" aria-label="Comparison diagram: a self-issued JWT path requires building and maintaining a login endpoint, password storage, token signing, and refresh and revocation logic, plus a user and role admin UI, all funneling into Spring Security's JWT validation. The Keycloak path replaces all four of those boxes with one configured service." xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="currentColor" />
+        </marker>
+      </defs>
+
+      <!-- column labels -->
+      <text x="190" y="26" text-anchor="middle" font-size="12" font-weight="700" letter-spacing="0.06em" fill="var(--rust)">SELF-ISSUED JWT &mdash; YOU BUILD</text>
+      <text x="630" y="26" text-anchor="middle" font-size="12" font-weight="700" letter-spacing="0.06em" fill="var(--accent-deep)">KEYCLOAK &mdash; YOU CONFIGURE</text>
+
+      <!-- left lane: 4 stacked boxes -->
+      <g font-size="12.5" fill="currentColor">
+        <rect x="60" y="46" width="260" height="46" rx="4" fill="none" stroke="var(--rust)" stroke-width="1.4" stroke-dasharray="4 3"/>
+        <text x="190" y="74" text-anchor="middle">Login endpoint + password storage</text>
+
+        <rect x="60" y="106" width="260" height="46" rx="4" fill="none" stroke="var(--rust)" stroke-width="1.4" stroke-dasharray="4 3"/>
+        <text x="190" y="134" text-anchor="middle">Token signing &amp; issuance</text>
+
+        <rect x="60" y="166" width="260" height="46" rx="4" fill="none" stroke="var(--rust)" stroke-width="1.4" stroke-dasharray="4 3"/>
+        <text x="190" y="194" text-anchor="middle">Refresh, expiry, revocation</text>
+
+        <rect x="60" y="226" width="260" height="46" rx="4" fill="none" stroke="var(--rust)" stroke-width="1.4" stroke-dasharray="4 3"/>
+        <text x="190" y="254" text-anchor="middle">User &amp; role admin UI</text>
+      </g>
+
+      <!-- connectors left lane merging down -->
+      <path d="M190,92 V310 M190,152 V310 M190,212 V310 M190,272 V310" fill="none" stroke="var(--ink-faint)" stroke-width="1.2"/>
+      <path d="M190,310 H430" fill="none" stroke="var(--ink-faint)" stroke-width="1.2" marker-end="url(#arrow)"/>
+
+      <!-- right lane: 1 box -->
+      <rect x="500" y="130" width="260" height="70" rx="4" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="1.6"/>
+      <text x="630" y="160" text-anchor="middle" font-size="12.5" fill="currentColor">Keycloak</text>
+      <text x="630" y="178" text-anchor="middle" font-size="11" fill="var(--ink-soft)">login, tokens, admin UI &mdash; already built</text>
+      <path d="M630,200 V310 H460" fill="none" stroke="var(--accent-deep)" stroke-width="1.4" marker-end="url(#arrow)"/>
+
+      <!-- shared box -->
+      <rect x="430" y="316" width="260" height="56" rx="4" fill="var(--paper-sunken)" stroke="currentColor" stroke-width="1.2"/>
+      <text x="560" y="340" text-anchor="middle" font-size="12" fill="currentColor">Spring Security</text>
+      <text x="560" y="357" text-anchor="middle" font-size="11" fill="var(--ink-soft)">validates JWT, reads role claim</text>
+    </svg>
+    <figcaption>Both paths end at the same Spring Security check. The self-issued path (left) needs four systems built and kept secure in-house; the Keycloak path (right) needs one service configured.</figcaption>
+  </figure>
+</section>
+
+<section>
+  <div class="eyebrow">Mechanism</div>
+  <h2>How a role check reaches an endpoint</h2>
+  <p>This is the full request path once Keycloak is in place, from a depot clerk logging in to a specific endpoint accepting or rejecting the call.</p>
+
+  <figure class="diagram-scroll">
+    <svg viewBox="0 0 900 300" role="img" aria-label="Flow diagram: a depot clerk logs into Keycloak, which issues a JWT containing a roles claim. The client app sends that token as a bearer header to the Spring Boot API. Spring Boot verifies the token's signature against Keycloak's public key, then checks the roles claim with an at-PreAuthorize annotation before allowing or denying the endpoint, for example the requisition approve endpoint." xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="arrow2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="currentColor" />
+        </marker>
+      </defs>
+
+      <!-- actors -->
+      <g font-size="12.5" font-weight="700">
+        <text x="60" y="30">Depot clerk</text>
+        <text x="290" y="30">Keycloak</text>
+        <text x="520" y="30">Client app</text>
+        <text x="760" y="30">Spring Boot API</text>
+      </g>
+      <!-- lifelines -->
+      <g stroke="var(--line)" stroke-width="1">
+        <line x1="60" y1="42" x2="60" y2="270"/>
+        <line x1="290" y1="42" x2="290" y2="270"/>
+        <line x1="520" y1="42" x2="520" y2="270"/>
+        <line x1="790" y1="42" x2="790" y2="270"/>
+      </g>
+
+      <!-- step 1 -->
+      <path d="M60,64 H290" stroke="currentColor" stroke-width="1.3" marker-end="url(#arrow2)"/>
+      <text x="175" y="58" text-anchor="middle" font-size="11">username + password</text>
+
+      <!-- step 2 -->
+      <path d="M290,96 H60" stroke="var(--accent-deep)" stroke-width="1.3" marker-end="url(#arrow2)"/>
+      <text x="175" y="90" text-anchor="middle" font-size="11" fill="var(--accent-deep)">JWT, roles claim inside</text>
+
+      <!-- step 3: client relays -->
+      <path d="M60,128 H520" stroke="currentColor" stroke-width="1" stroke-dasharray="2 3"/>
+      <text x="290" y="122" text-anchor="middle" font-size="10.5" fill="var(--ink-soft)">token handed to the client app</text>
+
+      <!-- step 4 -->
+      <path d="M520,160 H790" stroke="currentColor" stroke-width="1.3" marker-end="url(#arrow2)"/>
+      <text x="655" y="154" text-anchor="middle" font-size="11">Authorization: Bearer &lt;JWT&gt;</text>
+
+      <!-- step 5: verify against keycloak public key -->
+      <path d="M790,180 C 690,196 690,196 600,180" stroke="var(--ink-faint)" stroke-width="1.1" stroke-dasharray="3 3" fill="none"/>
+      <text x="695" y="200" text-anchor="middle" font-size="10.5" fill="var(--ink-soft)">signature checked against cached Keycloak public key</text>
+
+      <!-- step 6: role check box -->
+      <rect x="700" y="216" width="180" height="42" rx="4" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="1.4"/>
+      <text x="790" y="241" text-anchor="middle" font-size="11">@PreAuthorize role check</text>
+
+      <!-- outcomes -->
+      <path d="M790,258 V270" stroke="currentColor" stroke-width="1.1"/>
+      <text x="700" y="286" text-anchor="middle" font-size="11" fill="var(--moss)">200 &mdash; role matches</text>
+      <text x="880" y="286" text-anchor="end" font-size="11" fill="var(--rust)">403 &mdash; role missing</text>
+    </svg>
+    <figcaption>Example: a clerk without the <code class="mono">APPROVER</code> role hits <code class="mono">POST /approvals/{id}/approve</code> and is stopped at the role check, not inside business logic.</figcaption>
+  </figure>
+</section>
+
+<section>
+  <div class="eyebrow">Lifecycle</div>
+  <h2>Six stages, five departments, one coupon</h2>
+  <p>The process document (<em>Coupon Life Cycle to claude.xlsx</em>) lays out the coupon's full life, stage by stage, with who initiates, checks, and approves each step. It's the real org chart this platform's roles have to match &mdash; and it also shows how much of that life this API actually touches today.</p>
+
+  <figure class="diagram-scroll">
+    <svg viewBox="0 0 1090 220" role="img" aria-label="Diagram of the six-stage coupon lifecycle: Creation, Sales Stocking, Coupon Sales, Scanning, Redemption, and Disposal. Creation is owned by Stocks, with Procurement and Finance involved in ordering and payment. Sales Stocking is the Stocks-to-Commercial handoff. Coupon Sales is owned by Commercial. Scanning happens at Retail service stations. Redemption returns to Stocks. Sales Stocking, Scanning, and Redemption are already covered by this API; Coupon Sales, most of Creation's ordering chain, and Disposal are still manual or paper-based." xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="arrow3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="currentColor" />
+        </marker>
+      </defs>
+
+      <!-- legend -->
+      <rect x="770" y="10" width="16" height="12" rx="2" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="1.3"/>
+      <text x="792" y="20" font-size="10.5" fill="var(--ink-soft)">in this API</text>
+      <rect x="900" y="10" width="16" height="12" rx="2" fill="none" stroke="var(--ink-faint)" stroke-width="1.2" stroke-dasharray="3 2"/>
+      <text x="922" y="20" font-size="10.5" fill="var(--ink-soft)">paper / another system</text>
+
+      <!-- stage boxes: x = 20,200,380,560,740,920 · y=70 w=140 h=54 -->
+      <text x="90" y="55" text-anchor="middle" font-size="10.5" letter-spacing="0.04em" fill="var(--ink-faint)">STOCKS &middot; PMU &middot; FINANCE</text>
+      <rect x="20" y="70" width="140" height="54" rx="4" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="1.5"/>
+      <text x="90" y="93" text-anchor="middle" font-size="12">Creation</text>
+      <text x="90" y="109" text-anchor="middle" font-size="10" fill="var(--ink-soft)">serials + printing*</text>
+
+      <text x="270" y="55" text-anchor="middle" font-size="10.5" letter-spacing="0.04em" fill="var(--ink-faint)">STOCKS &rarr; COMMERCIAL</text>
+      <rect x="200" y="70" width="140" height="54" rx="4" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="1.5"/>
+      <text x="270" y="93" text-anchor="middle" font-size="12">Sales Stocking</text>
+      <text x="270" y="109" text-anchor="middle" font-size="10" fill="var(--ink-soft)">requisition + transfer</text>
+
+      <text x="450" y="55" text-anchor="middle" font-size="10.5" letter-spacing="0.04em" fill="var(--ink-faint)">COMMERCIAL</text>
+      <rect x="380" y="70" width="140" height="54" rx="4" fill="none" stroke="var(--ink-faint)" stroke-width="1.3" stroke-dasharray="4 3"/>
+      <text x="450" y="93" text-anchor="middle" font-size="12">Coupon Sales</text>
+      <text x="450" y="109" text-anchor="middle" font-size="10" fill="var(--ink-soft)">customer invoicing</text>
+
+      <text x="630" y="55" text-anchor="middle" font-size="10.5" letter-spacing="0.04em" fill="var(--ink-faint)">RETAIL</text>
+      <rect x="560" y="70" width="140" height="54" rx="4" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="1.5"/>
+      <text x="630" y="93" text-anchor="middle" font-size="12">Scanning</text>
+      <text x="630" y="109" text-anchor="middle" font-size="10" fill="var(--ink-soft)">attendant, at the pump</text>
+
+      <text x="810" y="55" text-anchor="middle" font-size="10.5" letter-spacing="0.04em" fill="var(--ink-faint)">STOCKS</text>
+      <rect x="740" y="70" width="140" height="54" rx="4" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="1.5"/>
+      <text x="810" y="93" text-anchor="middle" font-size="12">Redemption</text>
+      <text x="810" y="109" text-anchor="middle" font-size="10" fill="var(--ink-soft)">reconciliation</text>
+
+      <text x="990" y="55" text-anchor="middle" font-size="10.5" letter-spacing="0.04em" fill="var(--ink-faint)">STOCKS</text>
+      <rect x="920" y="70" width="140" height="54" rx="4" fill="none" stroke="var(--ink-faint)" stroke-width="1.3" stroke-dasharray="4 3"/>
+      <text x="990" y="93" text-anchor="middle" font-size="12">Disposal</text>
+      <text x="990" y="109" text-anchor="middle" font-size="10" fill="var(--ink-soft)">undefined in the source doc</text>
+
+      <!-- connecting arrows -->
+      <path d="M160,97 H200" stroke="currentColor" stroke-width="1.2" marker-end="url(#arrow3)"/>
+      <path d="M340,97 H380" stroke="currentColor" stroke-width="1.2" marker-end="url(#arrow3)"/>
+      <path d="M520,97 H560" stroke="currentColor" stroke-width="1.2" marker-end="url(#arrow3)"/>
+      <path d="M700,97 H740" stroke="currentColor" stroke-width="1.2" marker-end="url(#arrow3)"/>
+      <path d="M880,97 H920" stroke="currentColor" stroke-width="1.2" marker-end="url(#arrow3)"/>
+
+      <text x="540" y="140" text-anchor="middle" font-size="10" fill="var(--ink-soft)">sold to customer</text>
+      <text x="720" y="140" text-anchor="middle" font-size="10" fill="var(--ink-soft)">scanned coupons return to HQ</text>
+    </svg>
+    <figcaption>* Creation covers serial generation and receiving printed batches, both already in this API. Quotation, ordering, and payment through PMU and Finance to Fidelity Printers are still a manual, paper-based chain feeding into it.</figcaption>
+  </figure>
+</section>
+
+<section>
+  <div class="eyebrow">Roles &rarr; endpoints</div>
+  <h2>The real job titles, mapped to what exists today</h2>
+  <p class="ink-soft">Pulled from the process document rather than invented &mdash; these are the titles Petrotrade actually uses. Two platform-only roles (Admin, Auditor) are added on top for master data and read access, since they aren't lifecycle actors.</p>
+
+  <div class="table-scroll">
+    <table>
+      <thead>
+        <tr>
+          <th>Department</th>
+          <th>Roles</th>
+          <th>Does</th>
+          <th>In this API today</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="role-name">Stocks</td>
+          <td>Stocks Clerk, Stocks Controller</td>
+          <td>Generate coupons, receive printed batches, ship transfers, process redemptions</td>
+          <td class="endpoint-list"><span class="mono">CouponController</span> generate, <span class="mono">CouponBatchController</span> <span class="mono">/receive</span>, <span class="mono">ApprovalController</span> <span class="mono">/approve</span>, <span class="mono">RedemptionController</span></td>
+        </tr>
+        <tr>
+          <td class="role-name">Commercial<br><span class="ink-soft" style="font-weight:400;">(Sales)</span></td>
+          <td>Sales Clerk, Sales Executive, Accounts Clerk</td>
+          <td>Requisition coupons, receive transfers, invoice and distribute to customers</td>
+          <td class="endpoint-list"><span class="mono">RequisitionController</span> create, <span class="mono">ApprovalController</span> <span class="mono">/confirm-receipt</span> &mdash; customer invoicing (Coupon Sales) isn't in this API</td>
+        </tr>
+        <tr>
+          <td class="role-name">Retail</td>
+          <td>Attendant, Team Leader</td>
+          <td>Scan coupons at the pump; hold scanned coupons at the station pending return</td>
+          <td class="endpoint-list"><span class="mono">RedemptionController</span> <span class="mono">/scan</span> (mobile) &mdash; station-side storage isn't in this API</td>
+        </tr>
+        <tr>
+          <td class="role-name">PMU<br><span class="ink-soft" style="font-weight:400;">(Procurement)</span></td>
+          <td>Procurement Clerk, Officer, Manager</td>
+          <td>Request quotations, place print orders with Fidelity</td>
+          <td class="endpoint-list">Not yet &mdash; currently a manual/paper process</td>
+        </tr>
+        <tr>
+          <td class="role-name">Finance</td>
+          <td>Finance Officer, Finance Manager</td>
+          <td>Approve and pay for print orders</td>
+          <td class="endpoint-list">Not yet &mdash; currently a manual/paper process</td>
+        </tr>
+        <tr>
+          <td class="role-name">Platform<br><span class="ink-soft" style="font-weight:400;">(not in the paper process)</span></td>
+          <td>Admin, Auditor</td>
+          <td>Master data, config, ERP review; read-only reporting</td>
+          <td class="endpoint-list"><span class="mono">FuelTypeController</span>, <span class="mono">LocationController</span>, <span class="mono">DepartmentController</span>, <span class="mono">BulkConfigController</span>, <span class="mono">ErpSaleController</span>, <span class="mono">InventoryController</span>, <span class="mono">InsightController</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout">
+    <span class="tag">One title, several departments</span>
+    Approval isn't one queue &mdash; Stocks and Commercial each sign off on their own side of a transfer. The existing approve / confirm-receipt split already encodes this: the sending department ships (status goes to <span class="mono">TRANSFERSHIPMENT</span>), the receiving department confirms receipt (<span class="mono">TRANSRECEIPT</span>). The process document names <strong>Sales Executive</strong> as the approver for a requisition, but leaves the approver for the Coupon Transfer step itself blank &mdash; worth confirming whether that's the Stocks Controller by convention, or genuinely open.
+  </div>
+
+  <p>Either way, a role claim alone can't express the department split &mdash; <span class="mono">hasRole('APPROVER')</span> says nothing about <em>which</em> department someone approves for. That needs a second piece of information alongside the role:</p>
+  <ul class="plain">
+    <li><strong>In Keycloak:</strong> one group per department (Stocks, Commercial, Retail, &hellip;), each carrying the roles above as composite roles. Group membership rides along in the token as a claim.</li>
+    <li><strong>In Spring Security:</strong> the role annotation still gates the endpoint, but the service layer has to additionally check the token's department claim against the request's <span class="mono">fromDepartment</span> (for approve) or <span class="mono">toDepartment</span> (for confirm-receipt) &mdash; a data-level check <span class="mono">@PreAuthorize</span> can't do by itself, since it has no way to see which department a specific approval request belongs to.</li>
+  </ul>
+</section>
+
+<section>
+  <div class="eyebrow">Mobile client</div>
+  <h2>The attendant app is a public client, not a trusted one</h2>
+  <p>The <span class="mono">RedemptionController</span> <span class="mono">/scan</span> endpoint already exists for the attendant mobile app. That app runs on hardware Petrotrade doesn't fully control &mdash; a phone can be lost, rooted, or decompiled &mdash; so it needs a different Keycloak client setup than the backend or any internal web tooling.</p>
+  <div class="effort-grid">
+    <div class="effort-cell">
+      <h4>Backend / internal web &mdash; confidential client</h4>
+      <ul>
+        <li>Holds a client secret, server-side only</li>
+        <li>Standard authorization-code flow</li>
+      </ul>
+    </div>
+    <div class="effort-cell">
+      <h4>Attendant mobile app &mdash; public client</h4>
+      <ul>
+        <li>No client secret embedded in the app binary</li>
+        <li>Authorization Code + PKCE instead</li>
+        <li>Token stored in Keychain (iOS) / Keystore (Android)</li>
+      </ul>
+    </div>
+  </div>
+  <div class="callout">
+    <span class="tag">Shared devices</span>
+    Station phones are often handed between shifts. A short access-token lifetime plus a PIN or re-login on app resume keeps a lost or shared handset from acting as whoever last logged in.
+  </div>
+</section>
+
+<section>
+  <div class="eyebrow">Effort</div>
+  <h2>What actually needs Keycloak knowledge</h2>
+  <div class="effort-grid">
+    <div class="effort-cell">
+      <h4>One-time setup</h4>
+      <ul>
+        <li>Run Keycloak via Docker Compose</li>
+        <li>Create the realm, the department groups, and the roles above</li>
+        <li>Register one client for this API</li>
+        <li>Point Spring Security at the realm's issuer URI</li>
+      </ul>
+    </div>
+    <div class="effort-cell">
+      <h4>Ongoing, per endpoint</h4>
+      <ul>
+        <li><code class="mono">@PreAuthorize("hasRole('APPROVER')")</code></li>
+        <li>Plain Spring Security &mdash; nothing Keycloak-specific</li>
+        <li>No login, token, or password code to maintain</li>
+      </ul>
+    </div>
+  </div>
+  <div class="callout good">
+    <span class="tag">Net effect</span>
+    The Keycloak-specific knowledge is front-loaded into a single setup session and doesn't recur in day-to-day endpoint work.
+  </div>
+</section>
+
+<section>
+  <div class="eyebrow">Next steps</div>
+  <h2>Before implementation starts</h2>
+  <ol class="steps">
+    <li>
+      <div class="step-body"><strong>Close the one open question from the process doc</strong><span>Who signs off on the Coupon Transfer step itself &mdash; Stocks Controller by convention, or someone else? Everything else in the roles table above is already sourced from the process document.</span></div>
+    </li>
+    <li>
+      <div class="step-body"><strong>Stand up Keycloak</strong><span>Docker Compose file, realm export, and two clients &mdash; a confidential client for the backend/web tooling, a public PKCE client for the attendant app &mdash; done together, walked through step by step.</span></div>
+    </li>
+    <li>
+      <div class="step-body"><strong>Wire the resource server</strong><span>Add the Spring Security OAuth2 resource-server starter and point it at the realm's issuer URI.</span></div>
+    </li>
+    <li>
+      <div class="step-body"><strong>Gate the endpoint groups above</strong><span>Add <code class="mono">@PreAuthorize</code> to each controller group, starting with requisitions and approvals.</span></div>
+    </li>
+  </ol>
+</section>
+
+</div>
+
+<footer class="wrap">
+  Petrotrade CMS &middot; Coupon platform &middot; Internal engineering memo
+</footer>

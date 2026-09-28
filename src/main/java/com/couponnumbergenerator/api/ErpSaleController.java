@@ -1,5 +1,6 @@
 package com.couponnumbergenerator.api;
 
+import com.couponnumbergenerator.config.OpenApiConfig;
 import com.couponnumbergenerator.constants.CouponConstants;
 import com.couponnumbergenerator.dto.request.ErpSaleRequest;
 import com.couponnumbergenerator.dto.response.ApiResponse;
@@ -9,6 +10,7 @@ import com.couponnumbergenerator.enums.SaleStatus;
 import com.couponnumbergenerator.service.CouponSaleService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -32,14 +34,23 @@ public class ErpSaleController {
     private final CouponSaleService couponSaleService;
 
     @PostMapping
+    @PreAuthorize("hasRole('ERP_INTEGRATION')")
+    @SecurityRequirement(name = OpenApiConfig.CLIENT_CREDENTIALS_SCHEME)
     @Operation(summary = "Receive a sale event from Business Central",
-            description = "Idempotent on documentNumber — redelivering the same document is a safe no-op that "
-                    + "returns its existing state. Otherwise assigns quantity IN_STOCK coupons of fuelTypeId + "
-                    + "denomination at locationCode, oldest stock first, and flips them to ALLOCATED. If there "
-                    + "isn't enough eligible stock the sale is recorded FAILED (still 200 — the event was "
-                    + "received; the shortfall is a stock problem, not a delivery failure BC should retry "
-                    + "forever). Always 200: check the returned status field, not the HTTP status, to see the "
-                    + "outcome.")
+            description = "One event per BC sales document, carrying one or more lines (fuel type + "
+                    + "denomination + amount, given as either a loose 'quantity' of coupons or a number of "
+                    + "'books' of 100 — 'books' may be fractional, e.g. 1.5 books = 150 coupons, as long as "
+                    + "it lands on a whole coupon count). Idempotent on documentNumber — redelivering the same "
+                    + "document is a safe no-op that returns its existing state. Otherwise each line assigns "
+                    + "its quantity of IN_STOCK coupons at locationCode in selling order and flips them to "
+                    + "ALLOCATED; a line without enough eligible stock is recorded FAILED. A line flagged "
+                    + "wholeBooks is filled with whole intact books (100 serials, all IN_STOCK) from the "
+                    + "front of the queue, skipping any partly-used book — its quantity must be a multiple "
+                    + "of 100 (else 4xx). The sale's status is the rollup: ASSIGNED (all lines), "
+                    + "PARTIALLY_ASSIGNED (some), FAILED (none) — still 200, since a shortfall is a stock "
+                    + "problem, not a delivery failure BC should retry forever. Always 200: check the "
+                    + "returned status field, not the HTTP status. An unknown locationCode or fuelTypeId is "
+                    + "a config error and fails the request (4xx).")
     public ResponseEntity<ApiResponse<CouponSaleResponse>> receiveSale(
             @Valid @RequestBody ErpSaleRequest request) {
         CouponSaleResponse response = couponSaleService.receiveSale(request);
@@ -51,7 +62,7 @@ public class ErpSaleController {
     @PreAuthorize("hasAnyRole('ADMIN','AUDITOR')")
     @Operation(summary = "The sales log, optionally filtered by status (defaults to all)")
     public ResponseEntity<ApiResponse<PagedResponse<CouponSaleResponse>>> getSales(
-            @Parameter(description = "Filter by status: RECEIVED, ASSIGNED, PUSHED, FAILED")
+            @Parameter(description = "Filter by status: RECEIVED, ASSIGNED, PARTIALLY_ASSIGNED, PUSHED, FAILED")
             @RequestParam(required = false) SaleStatus status,
             @PageableDefault(size = 20, sort = "receivedAt", direction = Sort.Direction.DESC) Pageable pageable) {
         return ResponseEntity.ok(ApiResponse.success(couponSaleService.getSales(status, pageable)));

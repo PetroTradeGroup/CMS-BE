@@ -37,3 +37,15 @@ build/
 !README.md
 *.pdf
 *.log
+#bmad
+/_bmad
+/_bmad-output
+
+#agents
+.md
+#claude
+.claude
+
+### Docker ###
+.env
+docker/nginx/certs/

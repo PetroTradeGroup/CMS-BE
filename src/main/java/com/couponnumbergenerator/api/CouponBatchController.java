@@ -56,8 +56,10 @@ public class CouponBatchController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
             @Parameter(description = "Only batches with at least one coupon currently IN_STOCK — e.g. to pick a batch when fulfilling a requisition")
             @RequestParam(required = false) Boolean hasStock,
+            @Parameter(description = "Search by batch number (partial, case-insensitive) — matches across the whole dataset, not just the current page")
+            @RequestParam(required = false) String batchNumber,
             @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable) {
-        BatchFilterRequest filter = new BatchFilterRequest(fuelTypeId, couponType, locationId, dateFrom, dateTo, hasStock);
+        BatchFilterRequest filter = new BatchFilterRequest(fuelTypeId, couponType, locationId, dateFrom, dateTo, hasStock, batchNumber);
         return ResponseEntity.ok(ApiResponse.success(couponBatchService.getBatches(filter, pageable)));
     }
 
@@ -70,8 +72,9 @@ public class CouponBatchController {
             @RequestParam(required = false) Long locationId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
-            @RequestParam(required = false) Boolean hasStock) {
-        BatchFilterRequest filter = new BatchFilterRequest(fuelTypeId, couponType, locationId, dateFrom, dateTo, hasStock);
+            @RequestParam(required = false) Boolean hasStock,
+            @RequestParam(required = false) String batchNumber) {
+        BatchFilterRequest filter = new BatchFilterRequest(fuelTypeId, couponType, locationId, dateFrom, dateTo, hasStock, batchNumber);
         StreamingResponseBody body = out -> batchExportService.exportExcel(filter, out);
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION,
@@ -89,8 +92,9 @@ public class CouponBatchController {
             @RequestParam(required = false) Long locationId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
-            @RequestParam(required = false) Boolean hasStock) {
-        BatchFilterRequest filter = new BatchFilterRequest(fuelTypeId, couponType, locationId, dateFrom, dateTo, hasStock);
+            @RequestParam(required = false) Boolean hasStock,
+            @RequestParam(required = false) String batchNumber) {
+        BatchFilterRequest filter = new BatchFilterRequest(fuelTypeId, couponType, locationId, dateFrom, dateTo, hasStock, batchNumber);
         StreamingResponseBody body = out -> batchExportService.exportPdf(filter, out);
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION,

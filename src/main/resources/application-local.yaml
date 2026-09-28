@@ -1,0 +1,23 @@
+
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/couponGenerator
+    password: ${DB_PASSWORD:postgres}
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: http://localhost:8189/realms/petrotrade
+
+app:
+  cors:
+    allowed-origins: http://localhost:*,http://127.0.0.1:*,http://192.168.*.*:*,http://10.*.*.*:*
+  security:
+    jwk-set-uri: http://localhost:8189/realms/petrotrade/protocol/openid-connect/certs
+    validate-issuer: false
+  keycloak:
+    base-url: http://localhost:8189
+    admin:
+      client-secret: ${KEYCLOAK_ADMIN_CLIENT_SECRET:local-dev-admin-api-secret}
+  qr:
+    secret-key: ${QR_SECRET_KEY:change-me-in-production-qr-secret}

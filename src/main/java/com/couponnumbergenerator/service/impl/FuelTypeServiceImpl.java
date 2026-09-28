@@ -32,6 +32,7 @@ public class FuelTypeServiceImpl implements FuelTypeService {
                 .name(name)
                 .typeCode(request.typeCode())
                 .description(request.description())
+                .pricePerLitre(request.pricePerLitre())
                 .build());
         return toResponse(saved);
     }
@@ -64,6 +65,7 @@ public class FuelTypeServiceImpl implements FuelTypeService {
         fuelType.setName(request.name().toUpperCase());
         fuelType.setTypeCode(request.typeCode());
         fuelType.setDescription(request.description());
+        fuelType.setPricePerLitre(request.pricePerLitre());
         return toResponse(fuelTypeRepository.save(fuelType));
     }
 
@@ -86,12 +88,6 @@ public class FuelTypeServiceImpl implements FuelTypeService {
     }
 
     public FuelTypeResponse toResponse(FuelType fuelType) {
-        return new FuelTypeResponse(
-                fuelType.getId(),
-                fuelType.getName(),
-                fuelType.getTypeCode(),
-                fuelType.getDescription(),
-                fuelType.isActive()
-        );
+        return FuelTypeResponse.from(fuelType);
     }
 }

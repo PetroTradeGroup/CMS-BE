@@ -32,6 +32,7 @@ public record ApprovalRequestResponse(
         LocalDateTime receivedAt,
         Long requisitionId,
         String documentNumber,
+        String carRegistrationNumber,
         List<TransferredCouponResponse> transferredCoupons
 ) {
     public static ApprovalRequestResponse from(CouponApprovalRequest request) {
@@ -70,6 +71,7 @@ public record ApprovalRequestResponse(
                 request.getReceivedAt(),
                 request.getRequisition() == null ? null : request.getRequisition().getId(),
                 request.getDocumentNumber(),
+                request.getCarRegistrationNumber(),
                 transferredCoupons
         );
     }

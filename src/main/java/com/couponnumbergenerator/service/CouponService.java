@@ -4,9 +4,11 @@ import com.couponnumbergenerator.dto.request.CouponFilterRequest;
 import com.couponnumbergenerator.dto.request.GenerateBulkCouponRequest;
 import com.couponnumbergenerator.dto.request.GenerateCouponRequest;
 import com.couponnumbergenerator.dto.request.ImportLegacyCouponRequest;
+import com.couponnumbergenerator.dto.response.BulkLegacyImportResponse;
 import com.couponnumbergenerator.dto.response.CouponResponse;
 import com.couponnumbergenerator.dto.response.PagedResponse;
 import org.springframework.data.domain.Pageable;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.io.OutputStream;
@@ -25,7 +27,18 @@ public interface CouponService {
      */
     CouponResponse importLegacyCoupon(ImportLegacyCouponRequest request);
 
+    /**
+     * Same as {@link #importLegacyCoupon}, but for a whole spreadsheet of pre-existing coupons
+     * at once. Expects an .xlsx with a header row, one legacy coupon per row: couponNumber,
+     * fuelTypeCode, denomination, locationCode (optional), departmentCode (optional), expiryDate
+     * (optional, yyyy-MM-dd). Every row is validated independently — a bad row is reported, not
+     * thrown, so it never blocks the rest of the file. {@code dryRun} validates without
+     * persisting anything, for checking a file before it becomes real, redeemable stock.
+     */
+    BulkLegacyImportResponse importLegacyCoupons(MultipartFile file, boolean dryRun, String performedBy);
+
     CouponResponse getCouponByNumber(String couponNumber);
+
 
     PagedResponse<CouponResponse> getCoupons(CouponFilterRequest filter, Pageable pageable);
 

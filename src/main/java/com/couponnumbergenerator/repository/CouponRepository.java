@@ -37,6 +37,20 @@ public interface CouponRepository extends JpaRepository<Coupon, Long>, JpaSpecif
 
     boolean existsByCouponNumber(String couponNumber);
 
+    Optional<Coupon> findByRedemptionCode(String redemptionCode);
+
+    List<Coupon> findByRedemptionCodeIn(Collection<String> redemptionCodes);
+
+    /**
+     * Locks the given coupons {@code FOR UPDATE}, in coupon-number order so two callers locking
+     * overlapping sets can't deadlock. Redemption submission takes this lock before its
+     * "already pending?" check, so two stations submitting the same coupon at once serialise:
+     * the second waits, then sees the first's pending request and is refused.
+     */
+    @Query(value = "SELECT * FROM coupons WHERE coupon_number IN (:numbers) ORDER BY coupon_number FOR UPDATE",
+            nativeQuery = true)
+    List<Coupon> lockByCouponNumberIn(@Param("numbers") Collection<String> numbers);
+
     long countByStatus(CouponStatus status);
 
     long countByFuelTypeId(Long fuelTypeId);
@@ -62,24 +76,69 @@ public interface CouponRepository extends JpaRepository<Coupon, Long>, JpaSpecif
                        @Param("departmentCode") String departmentCode);
 
     /**
-     * Up to {@code pageable}'s page size of coupons eligible to sell at {@code locationId} —
-     * IN_STOCK, in the stock department, matching fuel type + denomination — oldest batch
-     * first (FIFO). Used to assign serials against an incoming ERP sale.
+     * Up to {@code limit} coupons eligible to sell at {@code locationId} — IN_STOCK, in the
+     * stock department, matching fuel type + denomination — in the strict order stock must be
+     * drawn: oldest <b>batch sequence number</b> first, then one <b>book</b> at a time, then
+     * position within the book (§11.2 of {@code docs/erp-sales-integration-design.md}).
+     *
+     * <p>Locks the returned coupon rows {@code FOR UPDATE} (blocking, no {@code SKIP LOCKED}):
+     * a second concurrent sale at the same site waits for this one to commit, then re-reads and
+     * sees the reduced stock — so two sales can never assign the same serials, and neither sees
+     * a false shortage. Only the coupon rows are locked, not the joined batch. Native because
+     * JPQL {@code @Lock} can't scope {@code FOR UPDATE} to one table. Must run inside the
+     * assignment transaction (which is read-write — {@code SELECT FOR UPDATE} is rejected in a
+     * read-only transaction).
      */
-    @Query("""
-            SELECT c FROM Coupon c
-            WHERE c.currentLocation.id = :locationId
-              AND c.fuelType.id = :fuelTypeId
+    @Query(value = """
+            SELECT c.* FROM coupons c
+            JOIN coupon_batches b ON b.id = c.batch_id
+            WHERE c.current_location_id = :locationId
+              AND c.fuel_type_id = :fuelTypeId
               AND c.denomination = :denomination
-              AND c.status = com.couponnumbergenerator.enums.CouponStatus.IN_STOCK
-              AND c.currentDepartment.code = :departmentCode
-            ORDER BY c.batch.createdAt ASC, c.batchSequence ASC
-            """)
+              AND c.status = 'IN_STOCK'
+              AND c.current_department_id = (SELECT d.id FROM departments d WHERE d.code = :departmentCode)
+            ORDER BY b.sequence_number ASC, c.book_number ASC NULLS LAST, c.batch_sequence ASC
+            LIMIT :limit
+            FOR UPDATE OF c
+            """, nativeQuery = true)
     List<Coupon> findIssuableForSale(@Param("locationId") Long locationId,
                                      @Param("fuelTypeId") Long fuelTypeId,
                                      @Param("denomination") BigDecimal denomination,
                                      @Param("departmentCode") String departmentCode,
-                                     Pageable pageable);
+                                     @Param("limit") int limit);
+
+    /**
+     * The <b>whole</b> eligible IN_STOCK pool at {@code locationId} (fuel type + denomination,
+     * stock department) — no {@code LIMIT} — locked {@code FOR UPDATE} and returned in the same
+     * selling order as {@link #findIssuableForSale}. For whole-book assignment (§11.4 of
+     * {@code docs/erp-sales-integration-design.md}): the caller buckets these rows into books
+     * ({@code batch.sequence_number} + {@code book_number}) in application code and takes the
+     * first N that are still 100/100 IN_STOCK.
+     *
+     * <p>Grouping in the DB with {@code HAVING count(*) = BOOK_SIZE} can't be combined safely
+     * with a blocking {@code FOR UPDATE}: Postgres re-checks each locked row against the WHERE
+     * after a concurrent commit, but does not re-run the aggregate, so a second concurrent sale
+     * could pick a book from a stale snapshot and then see a false shortage. Locking the flat
+     * pool and grouping afterwards avoids that — a concurrent sale blocks here, then re-reads
+     * only rows still IN_STOCK. Whole-book sales are rare and BC posts sale events
+     * single-threaded, so the wider lock scope is acceptable. Must run in the read-write
+     * assignment transaction.
+     */
+    @Query(value = """
+            SELECT c.* FROM coupons c
+            JOIN coupon_batches b ON b.id = c.batch_id
+            WHERE c.current_location_id = :locationId
+              AND c.fuel_type_id = :fuelTypeId
+              AND c.denomination = :denomination
+              AND c.status = 'IN_STOCK'
+              AND c.current_department_id = (SELECT d.id FROM departments d WHERE d.code = :departmentCode)
+            ORDER BY b.sequence_number ASC, c.book_number ASC NULLS LAST, c.batch_sequence ASC
+            FOR UPDATE OF c
+            """, nativeQuery = true)
+    List<Coupon> lockIssuablePoolForSale(@Param("locationId") Long locationId,
+                                         @Param("fuelTypeId") Long fuelTypeId,
+                                         @Param("denomination") BigDecimal denomination,
+                                         @Param("departmentCode") String departmentCode);
 
     @Query("""
             SELECT l.id AS locationId, l.code AS locationCode, l.name AS locationName,

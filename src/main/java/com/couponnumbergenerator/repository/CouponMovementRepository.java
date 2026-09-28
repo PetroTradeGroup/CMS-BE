@@ -1,6 +1,7 @@
 package com.couponnumbergenerator.repository;
 
 import com.couponnumbergenerator.model.CouponMovement;
+import com.couponnumbergenerator.repository.projection.RedemptionByAttendantRow;
 import com.couponnumbergenerator.repository.projection.RedemptionSummaryRow;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -22,13 +23,37 @@ public interface CouponMovementRepository extends JpaRepository<CouponMovement, 
             FROM CouponMovement m
             JOIN m.coupon c
             JOIN c.fuelType ft
+            LEFT JOIN CouponApprovalRequest a ON a.id = m.referenceId
             WHERE m.movementType = com.couponnumbergenerator.enums.MovementType.REDEMPTION
               AND m.createdAt >= :start AND m.createdAt < :end
               AND (:locationId IS NULL OR m.toLocation.id = :locationId)
+              AND (:requestedBy IS NULL OR a.requestedBy = :requestedBy)
+              AND (:fuelTypeId IS NULL OR ft.id = :fuelTypeId)
             GROUP BY ft.id, ft.name, c.denomination
             ORDER BY ft.name, c.denomination
             """)
     List<RedemptionSummaryRow> summarizeRedemptions(@Param("start") LocalDateTime start,
                                                     @Param("end") LocalDateTime end,
-                                                    @Param("locationId") Long locationId);
+                                                    @Param("locationId") Long locationId,
+                                                    @Param("requestedBy") String requestedBy,
+                                                    @Param("fuelTypeId") Long fuelTypeId);
+
+    @Query("""
+            SELECT a.requestedBy AS requestedBy, COUNT(c) AS count, SUM(c.denomination) AS litres
+            FROM CouponMovement m
+            JOIN m.coupon c
+            JOIN CouponApprovalRequest a ON a.id = m.referenceId
+            WHERE m.movementType = com.couponnumbergenerator.enums.MovementType.REDEMPTION
+              AND m.createdAt >= :start AND m.createdAt < :end
+              AND (:locationId IS NULL OR m.toLocation.id = :locationId)
+              AND (:requestedBy IS NULL OR a.requestedBy = :requestedBy)
+              AND (:fuelTypeId IS NULL OR c.fuelType.id = :fuelTypeId)
+            GROUP BY a.requestedBy
+            ORDER BY a.requestedBy
+            """)
+    List<RedemptionByAttendantRow> summarizeRedemptionsByAttendant(@Param("start") LocalDateTime start,
+                                                                     @Param("end") LocalDateTime end,
+                                                                     @Param("locationId") Long locationId,
+                                                                     @Param("requestedBy") String requestedBy,
+                                                                     @Param("fuelTypeId") Long fuelTypeId);
 }

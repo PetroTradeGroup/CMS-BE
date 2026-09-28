@@ -57,6 +57,6 @@ public class NaturalLanguageQueryServiceImpl implements NaturalLanguageQueryServ
     }
 
     private FuelTypeResponse toFuelTypeResponse(FuelType ft) {
-        return new FuelTypeResponse(ft.getId(), ft.getName(), ft.getTypeCode(), ft.getDescription(), ft.isActive());
+        return FuelTypeResponse.from(ft);
     }
 }

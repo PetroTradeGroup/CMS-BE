@@ -1,5 +1,6 @@
 package com.couponnumbergenerator.dto.response;
 
+import com.couponnumbergenerator.enums.CouponOrigin;
 import com.couponnumbergenerator.enums.CouponStatus;
 import com.couponnumbergenerator.enums.CouponType;
 import com.couponnumbergenerator.model.Coupon;
@@ -19,9 +20,12 @@ public record CouponResponse(
         LocationResponse location,
         DepartmentResponse department,
         String batchNumber,
+        Long batchSequenceNumber,
         Integer batchSequence,
         Integer bookNumber,
-        LocalDateTime createdAt
+        LocalDateTime createdAt,
+        /** Legacy-imported numbers look identical to generated ones — this is the explicit tell. */
+        CouponOrigin origin
 ) {
     public static CouponResponse from(Coupon coupon) {
         return new CouponResponse(
@@ -35,9 +39,11 @@ public record CouponResponse(
                 LocationResponse.from(coupon.getCurrentLocation()),
                 DepartmentResponse.from(coupon.getCurrentDepartment()),
                 coupon.getBatch() == null ? null : coupon.getBatch().getBatchNumber(),
+                coupon.getBatch() == null ? null : coupon.getBatch().getSequenceNumber(),
                 coupon.getBatchSequence(),
                 coupon.getBookNumber(),
-                coupon.getCreatedAt()
+                coupon.getCreatedAt(),
+                coupon.getOrigin()
         );
     }
 }

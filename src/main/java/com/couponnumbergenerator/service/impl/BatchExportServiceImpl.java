@@ -35,7 +35,7 @@ import java.util.List;
 public class BatchExportServiceImpl implements BatchExportService {
 
     private static final String[] COLUMNS = {"Batch Number", "Fuel Type", "Coupon Type", "Coupons",
-            "Target Qty (L)", "Origin Location", "Expiry Date", "Created By", "Created At"};
+            "Target Qty (L)", "Origin Location", "Expiry Date", "Created By", "Created At", "Batch Seq"};
     private static final DateTimeFormatter CREATED_AT_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
 
     private final CouponBatchRepository couponBatchRepository;
@@ -100,7 +100,7 @@ public class BatchExportServiceImpl implements BatchExportService {
 
         PdfPTable table = new PdfPTable(COLUMNS.length);
         table.setWidthPercentage(100);
-        table.setWidths(new float[]{2.4f, 1.2f, 1.1f, 0.9f, 1.2f, 1.4f, 1.2f, 1.2f, 1.5f});
+        table.setWidths(new float[]{2.4f, 1.2f, 1.1f, 0.9f, 1.2f, 1.4f, 1.2f, 1.2f, 1.5f, 0.8f});
         table.setHeaderRows(1);
 
         for (String column : COLUMNS) {
@@ -135,7 +135,8 @@ public class BatchExportServiceImpl implements BatchExportService {
                 batch.getOriginLocation().getName(),
                 batch.getExpiryDate() == null ? "" : batch.getExpiryDate().toString(),
                 batch.getCreatedBy() == null ? "" : batch.getCreatedBy(),
-                CREATED_AT_FORMAT.format(batch.getCreatedAt())
+                CREATED_AT_FORMAT.format(batch.getCreatedAt()),
+                batch.getSequenceNumber() == null ? "" : batch.getSequenceNumber().toString()
         };
     }
 }

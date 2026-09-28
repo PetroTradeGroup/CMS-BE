@@ -4,7 +4,6 @@ import com.couponnumbergenerator.enums.SaleStatus;
 import jakarta.persistence.*;
 import lombok.*;
 
-import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -16,6 +15,9 @@ import java.util.List;
  * ALLOCATED, and confirms the assigned range back to BC. Unlike a
  * {@link CouponApprovalRequest}, this isn't gated by supervisor approval — the money's
  * already been collected in BC — so it's an inbound audit record, not a workflow item.
+ *
+ * <p>One row per BC sales document. Each fuel type + denomination on the document is a
+ * {@link CouponSaleLine}; {@link #status} is the rollup of the line outcomes.
  */
 @Entity
 @Table(name = "coupon_sales", indexes = {
@@ -40,35 +42,17 @@ public class CouponSale {
     @JoinColumn(name = "location_id", nullable = false)
     private Location location;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "fuel_type_id", nullable = false)
-    private FuelType fuelType;
-
-    @Column(nullable = false, precision = 10, scale = 2)
-    private BigDecimal denomination;
-
-    /** How many coupons BC's sale asked for. */
-    @Column(name = "requested_count", nullable = false)
-    private int requestedCount;
-
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private SaleStatus status;
 
-    /** The serials assigned against this sale, in the order they were drawn. Empty until ASSIGNED. */
-    @ElementCollection
-    @CollectionTable(name = "coupon_sale_coupon_numbers", joinColumns = @JoinColumn(name = "coupon_sale_id"))
-    @Column(name = "coupon_number", length = 20)
+    @OneToMany(mappedBy = "sale", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     @Builder.Default
-    private List<String> couponNumbers = new ArrayList<>();
+    private List<CouponSaleLine> lines = new ArrayList<>();
 
     /** Whatever BC sends to identify the customer; opaque to the CMS. */
     @Column(name = "customer_reference", length = 100)
     private String customerReference;
-
-    /** Why assignment failed (e.g. insufficient stock). Set only when FAILED. */
-    @Column(name = "failure_reason", length = 255)
-    private String failureReason;
 
     @Column(name = "received_at", nullable = false, updatable = false)
     private LocalDateTime receivedAt;
@@ -79,6 +63,12 @@ public class CouponSale {
     /** When the assigned range was confirmed back to BC. */
     @Column(name = "pushed_at")
     private LocalDateTime pushedAt;
+
+    /** Adds a line and sets both sides of the association. */
+    public void addLine(CouponSaleLine line) {
+        line.setSale(this);
+        lines.add(line);
+    }
 
     @PrePersist
     protected void onCreate() {

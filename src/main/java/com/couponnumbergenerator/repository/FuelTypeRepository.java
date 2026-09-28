@@ -11,6 +11,8 @@ public interface FuelTypeRepository extends JpaRepository<FuelType, Long> {
 
     Optional<FuelType> findByName(String name);
 
+    Optional<FuelType> findByTypeCode(String typeCode);
+
     Page<FuelType> findByActiveTrue(Pageable pageable);
 
     boolean existsByName(String name);

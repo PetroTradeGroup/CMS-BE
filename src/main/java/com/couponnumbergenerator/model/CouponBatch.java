@@ -12,7 +12,8 @@ import java.time.LocalDateTime;
 @Table(name = "coupon_batches", indexes = {
         @Index(name = "idx_batch_fuel_type_id", columnList = "fuel_type_id"),
         @Index(name = "idx_batch_origin_location_id", columnList = "origin_location_id"),
-        @Index(name = "idx_batch_created_at", columnList = "created_at")
+        @Index(name = "idx_batch_created_at", columnList = "created_at"),
+        @Index(name = "idx_batch_fuel_type_sequence", columnList = "fuel_type_id, sequence_number", unique = true)
 })
 @Getter
 @Setter
@@ -27,6 +28,16 @@ public class CouponBatch {
 
     @Column(name = "batch_number", unique = true, nullable = false, length = 30)
     private String batchNumber;
+
+    /**
+     * 1-based, monotonic per fuel type (batch 1, 2, 3… of PETROL, tracked separately from
+     * DIESEL). This is the canonical order coupon stock is sold in — oldest sequence number
+     * first — and the number Stocks and auditors quote for a batch. Assigned from the fuel
+     * type's {@link CouponSequence} counter at creation. See §11.3 of
+     * docs/erp-sales-integration-design.md.
+     */
+    @Column(name = "sequence_number", nullable = false)
+    private Long sequenceNumber;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "fuel_type_id", nullable = false)
