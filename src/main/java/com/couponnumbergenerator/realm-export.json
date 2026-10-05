@@ -9,7 +9,7 @@
       { "name": "STOCKS_CLERK", "description": "Generate coupons, receive printed batches, ship transfers, process redemptions" },
       { "name": "STOCKS_CONTROLLER", "description": "Same as Stocks Clerk plus approval sign-off" },
       { "name": "SALES_CLERK", "description": "Raise requisitions" },
-      { "name": "SALES_EXECUTIVE", "description": "Raise requisitions, approve/receive transfers" },
+      { "name": "REGIONAL_REP", "description": "Approve/receive transfers; sees redemptions at every site" },
       { "name": "ACCOUNTS_CLERK", "description": "Raise requisitions, invoicing" },
       { "name": "ATTENDANT", "description": "Scan coupons at the pump" },
       { "name": "TEAM_LEADER", "description": "Same as Attendant plus station-level oversight" },
@@ -27,7 +27,7 @@
     {
       "name": "COMMERCIAL",
       "path": "/COMMERCIAL",
-      "realmRoles": ["SALES_CLERK", "SALES_EXECUTIVE", "ACCOUNTS_CLERK"]
+      "realmRoles": ["SALES_CLERK", "REGIONAL_REP", "ACCOUNTS_CLERK"]
     },
     {
       "name": "RETAIL",

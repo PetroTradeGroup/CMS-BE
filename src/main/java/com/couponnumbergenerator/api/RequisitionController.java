@@ -38,7 +38,7 @@ public class RequisitionController {
     private final CouponRequisitionService couponRequisitionService;
 
     @PostMapping
-    @PreAuthorize("hasAnyRole('SALES_CLERK','SALES_EXECUTIVE','ACCOUNTS_CLERK','ADMIN')")
+    @PreAuthorize("hasAnyRole('SALES_CLERK','ACCOUNTS_CLERK','ADMIN')")
     @Operation(summary = "Raise a requisition", description = "A department asks Stock for coupons in books, e.g. "
             + "200 books of 20L petrol + 10 books of 5L petrol — the system derives the litres (200×100×20 + "
             + "10×100×5). Each line names a fuelTypeId and either 'books' (preferred) or 'litres' (which must be "

@@ -19,6 +19,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
@@ -70,6 +71,14 @@ class BankControllerSecurityTest {
                 .andExpect(status().isOk());
 
         verify(bankPurchaseService).get("bank-a", "TXN-1");
+    }
+
+    @Test
+    void quoteWithoutARequiredParameterIsA400NamingIt() throws Exception {
+        mockMvc.perform(get("/api/v1/bank/quote").param("amount", "50").with(bank("bank-a")))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Missing required parameter 'fuelTypeId'"));
+        verifyNoInteractions(bankPurchaseService);
     }
 
     @Test

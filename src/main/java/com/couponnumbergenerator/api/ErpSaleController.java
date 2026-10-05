@@ -59,7 +59,7 @@ public class ErpSaleController {
     }
 
     @GetMapping
-    @PreAuthorize("hasAnyRole('ADMIN','AUDITOR')")
+    @PreAuthorize("hasAnyRole('ADMIN','AUDITOR','FINANCE')")
     @Operation(summary = "The sales log, optionally filtered by status (defaults to all)")
     public ResponseEntity<ApiResponse<PagedResponse<CouponSaleResponse>>> getSales(
             @Parameter(description = "Filter by status: RECEIVED, ASSIGNED, PARTIALLY_ASSIGNED, PUSHED, FAILED")
@@ -69,7 +69,7 @@ public class ErpSaleController {
     }
 
     @GetMapping("/{documentNumber}")
-    @PreAuthorize("hasAnyRole('ADMIN','AUDITOR')")
+    @PreAuthorize("hasAnyRole('ADMIN','AUDITOR','FINANCE')")
     @Operation(summary = "Get a sale by its BC document number")
     public ResponseEntity<ApiResponse<CouponSaleResponse>> getSale(@PathVariable String documentNumber) {
         return ResponseEntity.ok(ApiResponse.success(couponSaleService.getByDocumentNumber(documentNumber)));

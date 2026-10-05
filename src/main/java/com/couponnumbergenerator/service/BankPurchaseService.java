@@ -17,6 +17,7 @@ import com.couponnumbergenerator.enums.CouponStatus;
 import com.couponnumbergenerator.enums.CouponType;
 import com.couponnumbergenerator.exception.BankPurchaseNotFoundException;
 import com.couponnumbergenerator.exception.FuelTypeNotFoundException;
+import com.couponnumbergenerator.exception.PurchaseByAmountException;
 import com.couponnumbergenerator.model.BankPurchase;
 import com.couponnumbergenerator.model.Coupon;
 import com.couponnumbergenerator.model.FuelType;
@@ -103,7 +104,7 @@ public class BankPurchaseService {
                 String offers = quote(fuelType.getId(), request.amount()).options().stream()
                         .map(o -> "%s for %d L".formatted(o.amount().toPlainString(), o.litres()))
                         .collect(Collectors.joining(" or "));
-                throw new IllegalArgumentException(
+                throw new PurchaseByAmountException(
                         "%s %s doesn't buy a whole number of litres of %s at %s per litre — charge %s".formatted(
                                 request.amount().toPlainString(), CouponConstants.BANK_CURRENCY, fuelType.getName(),
                                 fuelType.getPricePerLitre().toPlainString(), offers));

@@ -100,6 +100,7 @@ public class RedemptionController {
     }
 
     @GetMapping("/summary")
+    @PreAuthorize("hasAnyRole('ATTENDANT','TEAM_LEADER','ADMIN','STOCKS_CLERK','STOCKS_CONTROLLER','REGIONAL_REP')")
     @Operation(summary = "What was redeemed over a day or a date range",
             description = "Coupon count and litres, in total and per fuel type (with a denomination "
                     + "breakdown) — optionally limited to one site and/or one fuel type. Pass dateFrom/dateTo "

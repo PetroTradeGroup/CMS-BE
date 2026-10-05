@@ -11,6 +11,7 @@ import com.couponnumbergenerator.enums.BankPurchaseStatus;
 import com.couponnumbergenerator.enums.CouponStatus;
 import com.couponnumbergenerator.enums.CouponType;
 import com.couponnumbergenerator.exception.BankPurchaseNotFoundException;
+import com.couponnumbergenerator.exception.PurchaseByAmountException;
 import com.couponnumbergenerator.model.BankPurchase;
 import com.couponnumbergenerator.model.Coupon;
 import com.couponnumbergenerator.model.CouponBatch;
@@ -206,7 +207,7 @@ class BankPurchaseServiceTest {
 
         assertThatThrownBy(() -> service.purchaseByAmount("bank-a",
                 new BankAmountPurchaseRequest("TXN-2", null, 1L, new BigDecimal("50.00"))))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(PurchaseByAmountException.class)
                 .hasMessageContaining("49.60 for 32 L or 51.15 for 33 L");
         verifyNoInteractions(couponService);
     }

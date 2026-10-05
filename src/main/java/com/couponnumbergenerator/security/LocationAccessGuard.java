@@ -13,7 +13,14 @@ import org.springframework.stereotype.Component;
 @Component
 public class LocationAccessGuard {
 
+    /**
+     * A Regional Rep oversees every site, so any locationCode on their account (e.g. a home
+     * station) is ignored — they're treated as non-station, like Stocks/Admin.
+     */
     public String callerLocationCode(Authentication authentication) {
+        if (hasRole(authentication, "ROLE_REGIONAL_REP")) {
+            return null;
+        }
         Jwt jwt = (Jwt) authentication.getPrincipal();
         return jwt.getClaimAsString("locationCode");
     }
@@ -29,7 +36,11 @@ public class LocationAccessGuard {
      * {@link #callerUsername} when this returns false.
      */
     public boolean callerIsTeamLeader(Authentication authentication) {
+        return hasRole(authentication, "ROLE_TEAM_LEADER");
+    }
+
+    private boolean hasRole(Authentication authentication, String role) {
         return authentication.getAuthorities().stream()
-                .anyMatch(authority -> authority.getAuthority().equals("ROLE_TEAM_LEADER"));
+                .anyMatch(authority -> authority.getAuthority().equals(role));
     }
 }
