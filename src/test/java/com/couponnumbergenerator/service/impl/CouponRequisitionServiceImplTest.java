@@ -117,7 +117,7 @@ class CouponRequisitionServiceImplTest {
         // Stocks request in books: 1 book of 20 L = 2,000 L; 2 books of 50 L = 10,000 L.
         RequisitionResponse result = service.create(new CreateRequisitionRequest(2L, 1L, "commercial-clerk",
                 List.of(new RequisitionLineRequest(1L, new BigDecimal("20"), null, 1),
-                        new RequisitionLineRequest(2L, new BigDecimal("50"), null, 2))));
+                        new RequisitionLineRequest(2L, new BigDecimal("50"), null, 2))), null);
 
         assertThat(result.id()).isEqualTo(5L);
         assertThat(result.department().code()).isEqualTo("COMMERCIAL");
@@ -140,7 +140,7 @@ class CouponRequisitionServiceImplTest {
         // A department can ask for both petrol and diesel in one requisition, even at the same denomination.
         RequisitionResponse result = service.create(new CreateRequisitionRequest(2L, 1L, "commercial-clerk",
                 List.of(new RequisitionLineRequest(1L, new BigDecimal("20"), null, 1),
-                        new RequisitionLineRequest(2L, new BigDecimal("20"), null, 1))));
+                        new RequisitionLineRequest(2L, new BigDecimal("20"), null, 1))), null);
 
         assertThat(result.lines()).hasSize(2);
         assertThat(result.lines()).extracting(line -> line.fuelType().name())
@@ -151,9 +151,31 @@ class CouponRequisitionServiceImplTest {
     void createRejectsDuplicateDenominationLinesOfTheSameFuelType() {
         assertThatThrownBy(() -> service.create(new CreateRequisitionRequest(2L, 1L, "commercial-clerk",
                 List.of(new RequisitionLineRequest(1L, new BigDecimal("20"), new BigDecimal("200")),
-                        new RequisitionLineRequest(1L, new BigDecimal("20.00"), new BigDecimal("100"))))))
+                        new RequisitionLineRequest(1L, new BigDecimal("20.00"), new BigDecimal("100")))), null))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("must not repeat");
+    }
+
+    @Test
+    void createTakesTheDepartmentFromTheCallersTokenNotTheBody() {
+        when(departmentRepository.findByCode("COMMERCIAL")).thenReturn(Optional.of(commercial));
+        when(locationRepository.findById(1L)).thenReturn(Optional.of(hq));
+        when(fuelTypeRepository.findById(1L)).thenReturn(Optional.of(petrol));
+        when(couponRequisitionRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        RequisitionResponse result = service.create(new CreateRequisitionRequest(99L, 1L, "commercial-clerk",
+                List.of(new RequisitionLineRequest(1L, new BigDecimal("20"), null, 1))), "COMMERCIAL");
+
+        assertThat(result.department().code()).isEqualTo("COMMERCIAL");
+        verify(departmentRepository, never()).findById(any());
+    }
+
+    @Test
+    void createWithNoDepartmentAnywhereIsRejected() {
+        assertThatThrownBy(() -> service.create(new CreateRequisitionRequest(null, 1L, "admin",
+                List.of(new RequisitionLineRequest(1L, new BigDecimal("20"), null, 1))), null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Department is required");
     }
 
     @Test

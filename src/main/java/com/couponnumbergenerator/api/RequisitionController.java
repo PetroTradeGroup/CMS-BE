@@ -11,6 +11,8 @@ import com.couponnumbergenerator.dto.response.PagedResponse;
 import com.couponnumbergenerator.dto.response.RequisitionResponse;
 import com.couponnumbergenerator.dto.response.TransferResultResponse;
 import com.couponnumbergenerator.enums.RequisitionStatus;
+import com.couponnumbergenerator.exception.RequisitionNotFoundException;
+import com.couponnumbergenerator.security.LocationAccessGuard;
 import com.couponnumbergenerator.service.ActionOutcome;
 import com.couponnumbergenerator.service.CouponRequisitionService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -24,8 +26,15 @@ import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.Collections;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Validated
 @RestController
@@ -36,6 +45,7 @@ import org.springframework.web.bind.annotation.*;
 public class RequisitionController {
 
     private final CouponRequisitionService couponRequisitionService;
+    private final LocationAccessGuard locationAccessGuard;
 
     @PostMapping
     @PreAuthorize("hasAnyRole('SALES_CLERK','ACCOUNTS_CLERK','ADMIN')")
@@ -44,24 +54,48 @@ public class RequisitionController {
             + "10×100×5). Each line names a fuelTypeId and either 'books' (preferred) or 'litres' (which must be "
             + "an exact whole-book multiple, else 400); a single requisition can mix fuel types (e.g. petrol and "
             + "diesel lines together), even at the same denomination.")
-    public ResponseEntity<ApiResponse<RequisitionResponse>> create(@Valid @RequestBody CreateRequisitionRequest request) {
+    public ResponseEntity<ApiResponse<RequisitionResponse>> create(
+            @Valid @RequestBody CreateRequisitionRequest request, Authentication authentication) {
+        // requestedBy comes from the token, never the body — it's what a Sales Clerk's "own requisitions" view filters on.
+        CreateRequisitionRequest stamped = new CreateRequisitionRequest(request.departmentId(), request.locationId(),
+                locationAccessGuard.callerUsername(authentication), request.lines());
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(ApiResponse.success("Requisition raised", couponRequisitionService.create(request)));
+                .body(ApiResponse.success("Requisition raised",
+                        couponRequisitionService.create(stamped, ((Jwt) authentication.getPrincipal()).getClaimAsString("department"))));
     }
 
     @GetMapping
-    @Operation(summary = "The requisition queue, optionally filtered by status (defaults to all)")
+    @Operation(summary = "The requisition queue, optionally filtered by status (defaults to all)",
+            description = "A Sales Clerk only sees the requisitions they raised themselves.")
     public ResponseEntity<ApiResponse<PagedResponse<RequisitionResponse>>> getRequisitions(
             @Parameter(description = "Filter by status: PENDING, PARTIALLY_FULFILLED, FULFILLED, REJECTED")
             @RequestParam(required = false) RequisitionStatus status,
-            @PageableDefault(size = 20, sort = "requestedAt", direction = Sort.Direction.DESC) Pageable pageable) {
-        return ResponseEntity.ok(ApiResponse.success(couponRequisitionService.getRequisitions(status, pageable)));
+            @PageableDefault(size = 20, sort = "requestedAt", direction = Sort.Direction.DESC) Pageable pageable,
+            Authentication authentication) {
+        return ResponseEntity.ok(ApiResponse.success(
+                couponRequisitionService.getRequisitions(status, ownerFilter(authentication), pageable)));
     }
 
     @GetMapping("/{id}")
-    @Operation(summary = "Get a requisition by ID")
-    public ResponseEntity<ApiResponse<RequisitionResponse>> getRequisition(@PathVariable Long id) {
-        return ResponseEntity.ok(ApiResponse.success(couponRequisitionService.getRequisition(id)));
+    @Operation(summary = "Get a requisition by ID", description = "404 for a Sales Clerk asking for someone else's requisition.")
+    public ResponseEntity<ApiResponse<RequisitionResponse>> getRequisition(@PathVariable Long id, Authentication authentication) {
+        RequisitionResponse response = couponRequisitionService.getRequisition(id);
+        String owner = ownerFilter(authentication);
+        if (owner != null && !owner.equals(response.requestedBy())) {
+            throw new RequisitionNotFoundException(id);
+        }
+        return ResponseEntity.ok(ApiResponse.success(response));
+    }
+
+    /** A Sales Clerk is limited to their own requisitions; anyone with a broader role (Stocks, Admin, …) sees them all. */
+    private String ownerFilter(Authentication authentication) {
+        Set<String> roles = authentication.getAuthorities().stream()
+                .map(GrantedAuthority::getAuthority)
+                .collect(Collectors.toSet());
+        boolean clerkOnly = roles.contains("ROLE_SALES_CLERK")
+                && Collections.disjoint(roles, Set.of("ROLE_ADMIN", "ROLE_STOCKS_CLERK", "ROLE_STOCKS_CONTROLLER",
+                        "ROLE_REGIONAL_REP", "ROLE_ACCOUNTS_CLERK"));
+        return clerkOnly ? locationAccessGuard.callerUsername(authentication) : null;
     }
 
     @PostMapping("/{id}/fulfill")
@@ -113,7 +147,7 @@ public class RequisitionController {
     }
 
     @PostMapping("/{id}/reject")
-    @PreAuthorize("hasAnyRole('STOCKS_CLERK','STOCKS_CONTROLLER','ADMIN')")
+    @PreAuthorize("hasRole('STOCKS_CONTROLLER')")
     @Operation(summary = "Reject a requisition, or close out what's left of a partial one",
             description = "A reason is required. Valid while PENDING or PARTIALLY_FULFILLED — rejecting a "
                     + "partially-fulfilled requisition closes out the outstanding balance without undoing "

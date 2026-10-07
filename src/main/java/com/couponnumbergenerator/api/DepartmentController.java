@@ -38,7 +38,7 @@ public class DepartmentController {
     }
 
     @GetMapping
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','SALES_CLERK','ACCOUNTS_CLERK')")
     @Operation(summary = "Get all departments, optionally filtered by active flag")
     public ResponseEntity<ApiResponse<List<DepartmentResponse>>> getAll(
             @Parameter(description = "Filter by active flag; omit for all departments")
@@ -47,7 +47,7 @@ public class DepartmentController {
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','SALES_CLERK','ACCOUNTS_CLERK')")
     @Operation(summary = "Get department by ID")
     public ResponseEntity<ApiResponse<DepartmentResponse>> getById(@PathVariable Long id) {
         return ResponseEntity.ok(ApiResponse.success(departmentService.getById(id)));

@@ -10,6 +10,7 @@
       { "name": "STOCKS_CONTROLLER", "description": "Same as Stocks Clerk plus approval sign-off" },
       { "name": "SALES_CLERK", "description": "Raise requisitions" },
       { "name": "REGIONAL_REP", "description": "Approve/receive transfers; sees redemptions at every site" },
+      { "name": "COMMERCIAL_MANAGER", "description": "Confirms receipt of stock issued against a requisition" },
       { "name": "ACCOUNTS_CLERK", "description": "Raise requisitions, invoicing" },
       { "name": "ATTENDANT", "description": "Scan coupons at the pump" },
       { "name": "TEAM_LEADER", "description": "Same as Attendant plus station-level oversight" },

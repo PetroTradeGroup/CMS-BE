@@ -9,4 +9,8 @@ import org.springframework.data.jpa.repository.JpaRepository;
 public interface CouponRequisitionRepository extends JpaRepository<CouponRequisition, Long> {
 
     Page<CouponRequisition> findByStatus(RequisitionStatus status, Pageable pageable);
+
+    Page<CouponRequisition> findByRequestedBy(String requestedBy, Pageable pageable);
+
+    Page<CouponRequisition> findByRequestedByAndStatus(String requestedBy, RequisitionStatus status, Pageable pageable);
 }

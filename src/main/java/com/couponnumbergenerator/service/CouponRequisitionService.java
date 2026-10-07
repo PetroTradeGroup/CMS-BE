@@ -19,7 +19,12 @@ import org.springframework.data.domain.Pageable;
  */
 public interface CouponRequisitionService {
 
-    RequisitionResponse create(CreateRequisitionRequest request);
+    /**
+     * @param callerDepartmentCode the raiser's {@code department} token claim — when present it decides the
+     *                             requesting department and {@code request.departmentId()} is ignored; when
+     *                             null (e.g. an Admin with no department) departmentId is required.
+     */
+    RequisitionResponse create(CreateRequisitionRequest request, String callerDepartmentCode);
 
     /**
      * Stock's response to a requisition: builds and submits the underlying transfer for the
@@ -43,6 +48,6 @@ public interface CouponRequisitionService {
 
     RequisitionResponse getRequisition(Long requisitionId);
 
-    /** The requisition queue, optionally filtered by status (defaults to all). */
-    PagedResponse<RequisitionResponse> getRequisitions(RequisitionStatus status, Pageable pageable);
+    /** The requisition queue, optionally filtered by status and/or who raised it (null = no filter). */
+    PagedResponse<RequisitionResponse> getRequisitions(RequisitionStatus status, String requestedBy, Pageable pageable);
 }

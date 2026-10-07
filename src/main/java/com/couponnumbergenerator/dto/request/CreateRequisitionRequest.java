@@ -8,7 +8,7 @@ import jakarta.validation.constraints.Size;
 import java.util.List;
 
 public record CreateRequisitionRequest(
-        @NotNull(message = "Department is required")
+        /** Only used when the caller's token has no department claim (e.g. Admin) — otherwise the token decides. */
         Long departmentId,
 
         @NotNull(message = "Location is required")

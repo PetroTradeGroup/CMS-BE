@@ -72,9 +72,17 @@ public class CouponRequisitionServiceImpl implements CouponRequisitionService {
 
     @Override
     @Transactional
-    public RequisitionResponse create(CreateRequisitionRequest request) {
+    public RequisitionResponse create(CreateRequisitionRequest request, String callerDepartmentCode) {
         validateNoDuplicateLines(request.lines());
-        Department department = resolveDepartment(request.departmentId());
+        Department department;
+        if (callerDepartmentCode != null) {
+            department = departmentRepository.findByCode(callerDepartmentCode)
+                    .orElseThrow(() -> new DepartmentNotFoundException(callerDepartmentCode));
+        } else if (request.departmentId() != null) {
+            department = resolveDepartment(request.departmentId());
+        } else {
+            throw new IllegalArgumentException("Department is required — your account has no department assigned");
+        }
         Location location = resolveLocation(request.locationId());
 
         CouponRequisition requisition = CouponRequisition.builder()
@@ -253,10 +261,17 @@ public class CouponRequisitionServiceImpl implements CouponRequisitionService {
 
     @Override
     @Transactional(readOnly = true)
-    public PagedResponse<RequisitionResponse> getRequisitions(RequisitionStatus status, Pageable pageable) {
-        Page<CouponRequisition> page = status == null
-                ? couponRequisitionRepository.findAll(pageable)
-                : couponRequisitionRepository.findByStatus(status, pageable);
+    public PagedResponse<RequisitionResponse> getRequisitions(RequisitionStatus status, String requestedBy, Pageable pageable) {
+        Page<CouponRequisition> page;
+        if (requestedBy != null) {
+            page = status == null
+                    ? couponRequisitionRepository.findByRequestedBy(requestedBy, pageable)
+                    : couponRequisitionRepository.findByRequestedByAndStatus(requestedBy, status, pageable);
+        } else {
+            page = status == null
+                    ? couponRequisitionRepository.findAll(pageable)
+                    : couponRequisitionRepository.findByStatus(status, pageable);
+        }
         return PagedResponse.from(page.map(RequisitionResponse::from));
     }
 

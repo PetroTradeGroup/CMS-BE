@@ -31,6 +31,8 @@ public record ApprovalRequestResponse(
         String receivedBy,
         LocalDateTime receivedAt,
         Long requisitionId,
+        /** Who raised the linked requisition — {@code requestedBy} on a requisition issue is the Stocks person who fulfilled it. */
+        String requisitionRequestedBy,
         String documentNumber,
         String carRegistrationNumber,
         List<TransferredCouponResponse> transferredCoupons
@@ -70,6 +72,7 @@ public record ApprovalRequestResponse(
                 request.getReceivedBy(),
                 request.getReceivedAt(),
                 request.getRequisition() == null ? null : request.getRequisition().getId(),
+                request.getRequisition() == null ? null : request.getRequisition().getRequestedBy(),
                 request.getDocumentNumber(),
                 request.getCarRegistrationNumber(),
                 transferredCoupons

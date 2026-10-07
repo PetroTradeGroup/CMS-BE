@@ -14,11 +14,13 @@ import org.springframework.stereotype.Component;
 public class LocationAccessGuard {
 
     /**
-     * A Regional Rep oversees every site, so any locationCode on their account (e.g. a home
-     * station) is ignored — they're treated as non-station, like Stocks/Admin.
+     * A Regional Rep oversees every site, and a Commercial Manager receives requisition stock
+     * bound for any site, so any locationCode on their account (e.g. a home station) is ignored —
+     * they're treated as non-station, like Stocks/Admin. Otherwise a stray locationCode would
+     * narrow their approvals list to their own submissions at one station, i.e. nothing.
      */
     public String callerLocationCode(Authentication authentication) {
-        if (hasRole(authentication, "ROLE_REGIONAL_REP")) {
+        if (hasRole(authentication, "ROLE_REGIONAL_REP") || hasRole(authentication, "ROLE_COMMERCIAL_MANAGER")) {
             return null;
         }
         Jwt jwt = (Jwt) authentication.getPrincipal();
