@@ -256,7 +256,7 @@ public class RedemptionController {
     }
 
     /** {date} alone is single-day shorthand; an open-ended dateFrom/dateTo defaults its other end to itself; nothing given defaults both to today. */
-    private LocalDate[] resolveRange(LocalDate date, LocalDate dateFrom, LocalDate dateTo) {
+    static LocalDate[] resolveRange(LocalDate date, LocalDate dateFrom, LocalDate dateTo) {
         if (dateFrom != null || dateTo != null) {
             LocalDate from = dateFrom != null ? dateFrom : dateTo;
             LocalDate to = dateTo != null ? dateTo : dateFrom;

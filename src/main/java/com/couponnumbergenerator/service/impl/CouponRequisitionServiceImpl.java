@@ -1,6 +1,7 @@
 package com.couponnumbergenerator.service.impl;
 
 import com.couponnumbergenerator.constants.CouponConstants;
+import com.couponnumbergenerator.dto.request.ApprovalDecisionRequest;
 import com.couponnumbergenerator.dto.request.AutoFulfillRequisitionRequest;
 import com.couponnumbergenerator.dto.request.CreateRequisitionRequest;
 import com.couponnumbergenerator.dto.request.DenominationLine;
@@ -53,6 +54,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.TreeSet;
 
@@ -116,9 +118,9 @@ public class CouponRequisitionServiceImpl implements CouponRequisitionService {
 
     @Override
     @Transactional
-    public ActionOutcome<TransferResultResponse> fulfill(Long requisitionId, FulfillRequisitionRequest request) {
+    public ApprovalRequestResponse fulfill(Long requisitionId, FulfillRequisitionRequest request) {
         validateNoDuplicateLines(request.lines());
-        CouponRequisition requisition = resolveOpenRequisition(requisitionId);
+        CouponRequisition requisition = resolveRequisition(requisitionId, ISSUABLE);
         CouponBatch batch = couponBatchRepository.findById(request.batchId())
                 .orElseThrow(() -> new CouponBatchNotFoundException(request.batchId()));
 
@@ -166,26 +168,29 @@ public class CouponRequisitionServiceImpl implements CouponRequisitionService {
         // has, the shortfall stays outstanding on the requisition line, and another batch can be
         // drawn against later via a fresh fulfill() call.
         ActionOutcome<TransferResultResponse> outcome = couponLifecycleService.transferByBatch(transferRequest, true);
-        switch (outcome) {
-            case ActionOutcome.Pending<TransferResultResponse> pending -> {
-                CouponApprovalRequest approval = couponApprovalRequestRepository.findById(pending.request().id())
-                        .orElseThrow(() -> new ApprovalRequestNotFoundException(pending.request().id()));
-                approval.setRequisition(requisition);
-                log.info("Requisition {} fulfilled via approval request {} ({} line(s))",
-                        requisitionId, approval.getId(), denominationLines.size());
-            }
-            case ActionOutcome.Applied<TransferResultResponse> ignored -> {
-                // toDepartmentId is always set above, so transferByBatch always defers — this
-                // branch only exists for switch exhaustiveness over the sealed ActionOutcome.
-            }
+        if (!(outcome instanceof ActionOutcome.Pending<TransferResultResponse> pending)) {
+            // toDepartmentId is always set above, so transferByBatch always defers.
+            throw new IllegalStateException("Requisition issue was applied without a transfer request");
         }
-        return outcome;
+        CouponApprovalRequest approval = couponApprovalRequestRepository.findById(pending.request().id())
+                .orElseThrow(() -> new ApprovalRequestNotFoundException(pending.request().id()));
+        approval.setRequisition(requisition);
+
+        // The Stocks Controller already approved this requisition up front, so the issue doesn't wait
+        // for a second sign-off: it goes straight to IN_TRANSIT (the GIV), recorded as decided by that
+        // controller, and the receiving Sales Clerk's confirm-receipt (the GRV) completes it.
+        String authorizedBy = Objects.requireNonNullElse(requisition.getStocksApprovedBy(), request.performedBy());
+        ApprovalRequestResponse issued = couponLifecycleService.approve(approval.getId(),
+                new ApprovalDecisionRequest(authorizedBy, request.reason()));
+        log.info("Requisition {} issued via transfer {} ({} line(s)), awaiting receipt",
+                requisitionId, approval.getId(), denominationLines.size());
+        return issued;
     }
 
     @Override
     @Transactional
     public AutoFulfillResponse autoFulfill(Long requisitionId, AutoFulfillRequisitionRequest request) {
-        CouponRequisition requisition = resolveOpenRequisition(requisitionId);
+        CouponRequisition requisition = resolveRequisition(requisitionId, ISSUABLE);
 
         // Plan whole books per batch: for each outstanding line, walk that fuel type's batches
         // oldest first and take as many whole books of issuable stock as each batch can give.
@@ -224,11 +229,8 @@ public class CouponRequisitionServiceImpl implements CouponRequisitionService {
 
         List<ApprovalRequestResponse> transfers = new ArrayList<>();
         for (Map.Entry<Long, List<RequisitionLineRequest>> entry : planByBatch.entrySet()) {
-            ActionOutcome<TransferResultResponse> outcome = fulfill(requisitionId, new FulfillRequisitionRequest(
-                    entry.getKey(), entry.getValue(), request.targetStatus(), request.reason(), request.performedBy()));
-            if (outcome instanceof ActionOutcome.Pending<TransferResultResponse> pending) {
-                transfers.add(pending.request());
-            }
+            transfers.add(fulfill(requisitionId, new FulfillRequisitionRequest(
+                    entry.getKey(), entry.getValue(), request.targetStatus(), request.reason(), request.performedBy())));
         }
         log.info("Requisition {} auto-fulfilled from {} batch(es) by {} — {} transfer request(s) raised",
                 requisitionId, planByBatch.size(), request.performedBy(), transfers.size());
@@ -237,11 +239,33 @@ public class CouponRequisitionServiceImpl implements CouponRequisitionService {
 
     @Override
     @Transactional
+    public RequisitionResponse approveCommercial(Long requisitionId, String approvedBy) {
+        CouponRequisition requisition = resolveRequisition(requisitionId, Set.of(RequisitionStatus.PENDING));
+        requisition.setStatus(RequisitionStatus.COMMERCIAL_APPROVED);
+        requisition.setCommercialApprovedBy(approvedBy);
+        requisition.setCommercialApprovedAt(LocalDateTime.now());
+        log.info("Requisition {} approved by Commercial ({})", requisitionId, approvedBy);
+        return RequisitionResponse.from(requisition);
+    }
+
+    @Override
+    @Transactional
+    public RequisitionResponse approveStocks(Long requisitionId, String approvedBy) {
+        CouponRequisition requisition = resolveRequisition(requisitionId, Set.of(RequisitionStatus.COMMERCIAL_APPROVED));
+        requisition.setStatus(RequisitionStatus.APPROVED);
+        requisition.setStocksApprovedBy(approvedBy);
+        requisition.setStocksApprovedAt(LocalDateTime.now());
+        log.info("Requisition {} approved by Stocks Controller ({})", requisitionId, approvedBy);
+        return RequisitionResponse.from(requisition);
+    }
+
+    @Override
+    @Transactional
     public RequisitionResponse reject(Long requisitionId, RequisitionDecisionRequest decision) {
         if (decision.reason() == null || decision.reason().isBlank()) {
             throw new IllegalArgumentException("A reason is required when rejecting a requisition");
         }
-        CouponRequisition requisition = resolveOpenRequisition(requisitionId);
+        CouponRequisition requisition = resolveRequisition(requisitionId, OPEN);
 
         requisition.setStatus(RequisitionStatus.REJECTED);
         requisition.setDecidedBy(decision.decidedBy());
@@ -275,17 +299,19 @@ public class CouponRequisitionServiceImpl implements CouponRequisitionService {
         return PagedResponse.from(page.map(RequisitionResponse::from));
     }
 
-    /**
-     * A requisition can still be acted on (fulfilled further, or rejected to close out what's left
-     * outstanding) while PENDING (nothing delivered yet) or PARTIALLY_FULFILLED (some lines short of
-     * their requested litres) — only FULFILLED and REJECTED are terminal.
-     */
-    private CouponRequisition resolveOpenRequisition(Long requisitionId) {
+    /** Statuses a Stocks Clerk can issue against — both approvals done, something still outstanding. */
+    private static final Set<RequisitionStatus> ISSUABLE =
+            Set.of(RequisitionStatus.APPROVED, RequisitionStatus.PARTIALLY_FULFILLED);
+
+    /** Every non-terminal status — only FULFILLED and REJECTED are final. */
+    private static final Set<RequisitionStatus> OPEN = Set.of(RequisitionStatus.PENDING,
+            RequisitionStatus.COMMERCIAL_APPROVED, RequisitionStatus.APPROVED, RequisitionStatus.PARTIALLY_FULFILLED);
+
+    private CouponRequisition resolveRequisition(Long requisitionId, Set<RequisitionStatus> allowed) {
         CouponRequisition requisition = couponRequisitionRepository.findById(requisitionId)
                 .orElseThrow(() -> new RequisitionNotFoundException(requisitionId));
-        RequisitionStatus status = requisition.getStatus();
-        if (status != RequisitionStatus.PENDING && status != RequisitionStatus.PARTIALLY_FULFILLED) {
-            throw new RequisitionAlreadyDecidedException(requisitionId, status);
+        if (!allowed.contains(requisition.getStatus())) {
+            throw new RequisitionAlreadyDecidedException(requisitionId, requisition.getStatus());
         }
         return requisition;
     }

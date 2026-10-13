@@ -65,12 +65,18 @@ public class RedemptionReportServiceImpl implements RedemptionReportService {
         return buildSummary(dateFrom, dateTo, callerLocation.getId(), fuelTypeId, attendantUsername, rows);
     }
 
-    /** Rows arrive ordered by fuel type then denomination, so each fuel type's lines are contiguous. */
     private RedemptionSummaryResponse buildSummary(LocalDate dateFrom, LocalDate dateTo, Long locationId,
             Long fuelTypeId, String attendantUsername, List<RedemptionSummaryRow> rows) {
+        List<FuelTypeSummary> byFuelType = groupByFuelType(rows);
+        long totalCoupons = byFuelType.stream().mapToLong(FuelTypeSummary::count).sum();
+        BigDecimal totalLitres = byFuelType.stream().map(FuelTypeSummary::litres).reduce(BigDecimal.ZERO, BigDecimal::add);
+        return new RedemptionSummaryResponse(
+                dateFrom, dateTo, locationId, fuelTypeId, attendantUsername, totalCoupons, totalLitres, byFuelType);
+    }
+
+    /** Rows must arrive ordered by fuel type then denomination, so each fuel type's lines are contiguous. */
+    static List<FuelTypeSummary> groupByFuelType(List<? extends RedemptionSummaryRow> rows) {
         List<FuelTypeSummary> byFuelType = new ArrayList<>();
-        long totalCoupons = 0;
-        BigDecimal totalLitres = BigDecimal.ZERO;
         int i = 0;
         while (i < rows.size()) {
             RedemptionSummaryRow first = rows.get(i);
@@ -85,11 +91,8 @@ public class RedemptionReportServiceImpl implements RedemptionReportService {
                 i++;
             }
             byFuelType.add(new FuelTypeSummary(first.getFuelTypeId(), first.getFuelTypeName(), count, litres, lines));
-            totalCoupons += count;
-            totalLitres = totalLitres.add(litres);
         }
-        return new RedemptionSummaryResponse(
-                dateFrom, dateTo, locationId, fuelTypeId, attendantUsername, totalCoupons, totalLitres, byFuelType);
+        return byFuelType;
     }
 
     @Override

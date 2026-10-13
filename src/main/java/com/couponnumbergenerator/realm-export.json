@@ -23,7 +23,7 @@
     {
       "name": "STOCKS",
       "path": "/STOCKS",
-      "realmRoles": ["STOCKS_CLERK", "STOCKS_CONTROLLER"]
+      "realmRoles": ["STOCKS_CLERK"]
     },
     {
       "name": "COMMERCIAL",
@@ -186,6 +186,7 @@
       "lastName": "Controller",
       "credentials": [{ "type": "password", "value": "dev", "temporary": false }],
       "groups": ["/STOCKS"],
+      "realmRoles": ["STOCKS_CONTROLLER"],
       "attributes": { "department": ["STOCKS"] }
     },
     {
@@ -195,6 +196,39 @@
       "emailVerified": true,
       "firstName": "Sales",
       "lastName": "Executive",
+      "credentials": [{ "type": "password", "value": "dev", "temporary": false }],
+      "groups": ["/COMMERCIAL"],
+      "attributes": { "department": ["COMMERCIAL"] }
+    },
+    {
+      "username": "sales.clerk",
+      "enabled": true,
+      "email": "sales.clerk@petrotrade.dev",
+      "emailVerified": true,
+      "firstName": "sales",
+      "lastName": "sales",
+      "credentials": [{ "type": "password", "value": "dev", "temporary": false }],
+      "groups": ["/RETAIL"],
+      "attributes": { "department": ["RETAIL"] }
+    },
+    {
+      "username": "commercial.manager",
+      "enabled": true,
+      "email": "commercial.manager@petrotrade.dev",
+      "emailVerified": true,
+      "firstName": "commercial",
+      "lastName": "commercial",
+      "credentials": [{ "type": "password", "value": "dev", "temporary": false }],
+      "groups": ["/COMMERCIAL"],
+      "attributes": { "department": ["COMMERCIAL"] }
+    },
+    {
+      "username": "rep",
+      "enabled": true,
+      "email": "rep@petrotrade.dev",
+      "emailVerified": true,
+      "firstName": "rep",
+      "lastName": "rep",
       "credentials": [{ "type": "password", "value": "dev", "temporary": false }],
       "groups": ["/COMMERCIAL"],
       "attributes": { "department": ["COMMERCIAL"] }

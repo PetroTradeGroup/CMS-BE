@@ -146,7 +146,9 @@ public class CouponBatchController {
     @PostMapping("/{id}/receive")
     @PreAuthorize("hasAnyRole('STOCKS_CLERK','STOCKS_CONTROLLER','ADMIN')")
     @Operation(summary = "Receive a batch into stock",
-            description = "Moves all GENERATED coupons of the batch to IN_STOCK at the given location (defaults to the batch's origin location).")
+            description = "Moves GENERATED coupons of the batch to IN_STOCK at the given location (defaults to the batch's origin location). "
+                    + "Optional fromBook/toBook (inclusive) receive only those books — a partial supplier delivery; "
+                    + "call again with the next range when the rest arrives.")
     public ResponseEntity<ApiResponse<TransitionResultResponse>> receiveBatch(
             @PathVariable Long id,
             @Valid @RequestBody(required = false) ReceiveBatchRequest request) {

@@ -125,7 +125,7 @@ class CouponControllerTransitionTest {
     @Test
     void transitionWithLocationReturnsAcceptedForApproval() throws Exception {
         ApprovalRequestResponse pendingRequest = new ApprovalRequestResponse(
-                5L, ApprovalRequestType.TRANSITION, 1, List.of(), List.of(), List.of("PU002M0000001"), null, null, null,
+                5L, ApprovalRequestType.TRANSITION, 1, List.of(), List.of(), List.of(), List.of("PU002M0000001"), null, null, null,
                 CouponStatus.ALLOCATED, null, null, null, "tester", LocalDateTime.now(),
                 ApprovalStatus.PENDING, null, null, null, null, null, null, null, null, null, List.of());
         when(couponLifecycleService.transition(any()))

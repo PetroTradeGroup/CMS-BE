@@ -10,12 +10,20 @@ public final class ApprovalRequestSpecification {
     private ApprovalRequestSpecification() {}
 
     public static Specification<CouponApprovalRequest> withFilters(
-            ApprovalRequestType requestType, ApprovalStatus status, String callerLocationCode, String callerUsername) {
+            ApprovalRequestType requestType, ApprovalStatus status, String callerLocationCode, String callerUsername,
+            String requisitionRaisedBy) {
         return Specification
                 .where(byRequestType(requestType))
                 .and(byStatus(status))
                 .and(byLocationCode(callerLocationCode))
-                .and(byRequestedBy(callerUsername));
+                .and(byRequestedBy(callerUsername))
+                .and(byRequisitionRaisedBy(requisitionRaisedBy));
+    }
+
+    /** A Sales Clerk only sees the issues raised against their own requisitions — the ones they receive. */
+    private static Specification<CouponApprovalRequest> byRequisitionRaisedBy(String username) {
+        return (root, query, cb) -> username == null ? null
+                : cb.equal(root.get("requisition").get("requestedBy"), username);
     }
 
     private static Specification<CouponApprovalRequest> byRequestType(ApprovalRequestType requestType) {

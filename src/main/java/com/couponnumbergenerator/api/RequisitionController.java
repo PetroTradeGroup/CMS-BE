@@ -6,14 +6,13 @@ import com.couponnumbergenerator.dto.request.CreateRequisitionRequest;
 import com.couponnumbergenerator.dto.request.FulfillRequisitionRequest;
 import com.couponnumbergenerator.dto.request.RequisitionDecisionRequest;
 import com.couponnumbergenerator.dto.response.ApiResponse;
+import com.couponnumbergenerator.dto.response.ApprovalRequestResponse;
 import com.couponnumbergenerator.dto.response.AutoFulfillResponse;
 import com.couponnumbergenerator.dto.response.PagedResponse;
 import com.couponnumbergenerator.dto.response.RequisitionResponse;
-import com.couponnumbergenerator.dto.response.TransferResultResponse;
 import com.couponnumbergenerator.enums.RequisitionStatus;
 import com.couponnumbergenerator.exception.RequisitionNotFoundException;
 import com.couponnumbergenerator.security.LocationAccessGuard;
-import com.couponnumbergenerator.service.ActionOutcome;
 import com.couponnumbergenerator.service.CouponRequisitionService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -25,16 +24,14 @@ import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
-import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.Collections;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 @Validated
 @RestController
@@ -89,13 +86,7 @@ public class RequisitionController {
 
     /** A Sales Clerk is limited to their own requisitions; anyone with a broader role (Stocks, Admin, …) sees them all. */
     private String ownerFilter(Authentication authentication) {
-        Set<String> roles = authentication.getAuthorities().stream()
-                .map(GrantedAuthority::getAuthority)
-                .collect(Collectors.toSet());
-        boolean clerkOnly = roles.contains("ROLE_SALES_CLERK")
-                && Collections.disjoint(roles, Set.of("ROLE_ADMIN", "ROLE_STOCKS_CLERK", "ROLE_STOCKS_CONTROLLER",
-                        "ROLE_REGIONAL_REP", "ROLE_ACCOUNTS_CLERK"));
-        return clerkOnly ? locationAccessGuard.callerUsername(authentication) : null;
+        return locationAccessGuard.salesClerkOnlyUsername(authentication);
     }
 
     @PostMapping("/{id}/fulfill")
@@ -110,22 +101,19 @@ public class RequisitionController {
                     + "matching batch (GET /batches?fuelTypeId=&hasStock=true finds one). If the named batch "
                     + "doesn't have enough eligible coupons of a requested denomination on hand, it still issues "
                     + "whatever it does have rather than rejecting the whole call — only fails 400 if the batch "
-                    + "has zero eligible coupons for every requested line. Builds and submits the underlying "
-                    + "transfer automatically (see POST /coupons/transfers); the resulting request always defers "
-                    + "for supervisor approval since it moves department. The requisition's lines only credit the "
-                    + "litres actually delivered once the receiving department confirms receipt "
-                    + "(POST /approvals/{id}/confirm-receipt) — it flips to FULFILLED once every line is "
-                    + "satisfied, or PARTIALLY_FULFILLED (still open to further fulfill/reject calls) if not.")
-    public ResponseEntity<ApiResponse<?>> fulfill(@PathVariable Long id, @Valid @RequestBody FulfillRequisitionRequest request) {
-        ActionOutcome<TransferResultResponse> outcome = couponRequisitionService.fulfill(id, request);
-        return switch (outcome) {
-            case ActionOutcome.Applied<TransferResultResponse> applied -> ResponseEntity.ok(ApiResponse.success(
-                    "%d coupon(s) transferred".formatted(applied.result().count()), applied.result()));
-            case ActionOutcome.Pending<TransferResultResponse> pending -> ResponseEntity.status(HttpStatus.ACCEPTED)
-                    .body(ApiResponse.success(
-                            "Submitted for supervisor approval (request #%d)".formatted(pending.request().id()),
-                            pending.request()));
-        };
+                    + "has zero eligible coupons for every requested line. Only valid once the requisition is "
+                    + "APPROVED (both Commercial and the Stocks Controller signed off) or PARTIALLY_FULFILLED — "
+                    + "409 otherwise. This is the issue (GIV): the underlying transfer is built and, since the "
+                    + "Stocks Controller already approved the requisition, goes straight to TRANSFERSHIPMENT "
+                    + "(coupons IN_TRANSIT) with no second approval. The requisition's lines only credit the "
+                    + "litres actually delivered once the receiving Sales Clerk confirms receipt "
+                    + "(POST /approvals/{id}/confirm-receipt, the GRV) — it flips to FULFILLED once every line "
+                    + "is satisfied, or PARTIALLY_FULFILLED (still open to further fulfill/reject calls) if not.")
+    public ResponseEntity<ApiResponse<ApprovalRequestResponse>> fulfill(
+            @PathVariable Long id, @Valid @RequestBody FulfillRequisitionRequest request) {
+        ApprovalRequestResponse issued = couponRequisitionService.fulfill(id, request);
+        return ResponseEntity.ok(ApiResponse.success(
+                "Issued under GIV #%d — in transit, awaiting receipt".formatted(issued.id()), issued));
     }
 
     @PostMapping("/{id}/auto-fulfill")
@@ -134,26 +122,60 @@ public class RequisitionController {
             description = "No batch or lines are named: for each outstanding line the system walks the batches of "
                     + "that line's fuel type oldest-first (FIFO) and draws whole books (100 coupons of the line's "
                     + "denomination) from each until the line is covered or stock runs out — spilling into the "
-                    + "next batch automatically when one runs dry. One deferred transfer (supervisor approval) is "
-                    + "raised per batch drawn from; litres credit on receipt confirmation, exactly as with manual "
-                    + "fulfill. Litres short of a whole book stay outstanding. 400 if not a single whole book of "
-                    + "issuable stock exists for any outstanding line.")
+                    + "next batch automatically when one runs dry. One transfer (GIV), issued straight to "
+                    + "IN_TRANSIT, is raised per batch drawn from; litres credit on receipt confirmation, exactly "
+                    + "as with manual fulfill. Same APPROVED/PARTIALLY_FULFILLED precondition as fulfill. Litres "
+                    + "short of a whole book stay outstanding. 400 if not a single whole book of issuable stock "
+                    + "exists for any outstanding line.")
     public ResponseEntity<ApiResponse<AutoFulfillResponse>> autoFulfill(
             @PathVariable Long id, @Valid @RequestBody AutoFulfillRequisitionRequest request) {
         AutoFulfillResponse response = couponRequisitionService.autoFulfill(id, request);
-        return ResponseEntity.status(HttpStatus.ACCEPTED).body(ApiResponse.success(
-                "%d transfer request(s) submitted for supervisor approval".formatted(response.transfers().size()),
-                response));
+        return ResponseEntity.ok(ApiResponse.success(
+                "%d issue(s) in transit, awaiting receipt".formatted(response.transfers().size()), response));
+    }
+
+    @PostMapping("/{id}/commercial-approve")
+    @PreAuthorize("hasAnyRole('COMMERCIAL_MANAGER','REGIONAL_REP')")
+    @Operation(summary = "Commercial's approval — the first sign-off",
+            description = "The Commercial Manager or Rep approves a PENDING requisition raised by a Sales Clerk; "
+                    + "it moves to COMMERCIAL_APPROVED and on to the Stocks Controller. No body — the approver "
+                    + "is taken from the token. 409 unless PENDING.")
+    public ResponseEntity<ApiResponse<RequisitionResponse>> approveCommercial(
+            @PathVariable Long id, Authentication authentication) {
+        return ResponseEntity.ok(ApiResponse.success("Requisition %d approved by Commercial".formatted(id),
+                couponRequisitionService.approveCommercial(id, locationAccessGuard.callerUsername(authentication))));
+    }
+
+    @PostMapping("/{id}/approve")
+    @PreAuthorize("hasRole('STOCKS_CONTROLLER')")
+    @Operation(summary = "Stocks Controller's approval — the second sign-off",
+            description = "Approves a COMMERCIAL_APPROVED requisition; it moves to APPROVED and a Stocks Clerk can "
+                    + "now issue against it (fulfill / auto-fulfill). No body — the approver is taken from the "
+                    + "token. 409 unless COMMERCIAL_APPROVED.")
+    public ResponseEntity<ApiResponse<RequisitionResponse>> approveStocks(
+            @PathVariable Long id, Authentication authentication) {
+        return ResponseEntity.ok(ApiResponse.success("Requisition %d approved by Stocks".formatted(id),
+                couponRequisitionService.approveStocks(id, locationAccessGuard.callerUsername(authentication))));
     }
 
     @PostMapping("/{id}/reject")
-    @PreAuthorize("hasRole('STOCKS_CONTROLLER')")
+    @PreAuthorize("hasAnyRole('STOCKS_CONTROLLER','COMMERCIAL_MANAGER','REGIONAL_REP')")
     @Operation(summary = "Reject a requisition, or close out what's left of a partial one",
-            description = "A reason is required. Valid while PENDING or PARTIALLY_FULFILLED — rejecting a "
-                    + "partially-fulfilled requisition closes out the outstanding balance without undoing "
-                    + "coupons already delivered.")
+            description = "A reason is required. Whoever's turn it is rejects: Commercial (Manager or Rep) while "
+                    + "PENDING, the Stocks Controller from COMMERCIAL_APPROVED onwards (403 otherwise). Rejecting a "
+                    + "partially-fulfilled requisition closes out the outstanding balance without undoing coupons "
+                    + "already delivered.")
     public ResponseEntity<ApiResponse<RequisitionResponse>> reject(
-            @PathVariable Long id, @Valid @RequestBody RequisitionDecisionRequest request) {
+            @PathVariable Long id, @Valid @RequestBody RequisitionDecisionRequest request, Authentication authentication) {
+        boolean commercialStage = couponRequisitionService.getRequisition(id).status() == RequisitionStatus.PENDING;
+        Set<String> allowed = commercialStage
+                ? Set.of("ROLE_COMMERCIAL_MANAGER", "ROLE_REGIONAL_REP")
+                : Set.of("ROLE_STOCKS_CONTROLLER");
+        if (authentication.getAuthorities().stream().noneMatch(a -> allowed.contains(a.getAuthority()))) {
+            throw new AccessDeniedException(commercialStage
+                    ? "Only Commercial can reject a requisition awaiting Commercial's approval"
+                    : "Only a Stocks Controller can reject a requisition once Commercial has approved it");
+        }
         return ResponseEntity.ok(ApiResponse.success("Requisition %d rejected".formatted(id),
                 couponRequisitionService.reject(id, request)));
     }

@@ -54,6 +54,18 @@ public class CouponRequisition {
     @Builder.Default
     private RequisitionStatus status = RequisitionStatus.PENDING;
 
+    @Column(name = "commercial_approved_by", length = 100)
+    private String commercialApprovedBy;
+
+    @Column(name = "commercial_approved_at")
+    private LocalDateTime commercialApprovedAt;
+
+    @Column(name = "stocks_approved_by", length = 100)
+    private String stocksApprovedBy;
+
+    @Column(name = "stocks_approved_at")
+    private LocalDateTime stocksApprovedAt;
+
     @Column(name = "decided_by", length = 100)
     private String decidedBy;
 

@@ -24,6 +24,16 @@ class LocationAccessGuardTest {
     }
 
     @Test
+    void onlyAPlainSalesClerkIsScopedToTheirOwnRequisitions() {
+        Jwt jwt = Jwt.withTokenValue("t").header("alg", "none").claim("preferred_username", "clerk1").build();
+        assertThat(guard.salesClerkOnlyUsername(new JwtAuthenticationToken(jwt,
+                List.of(new SimpleGrantedAuthority("ROLE_SALES_CLERK"))))).isEqualTo("clerk1");
+        assertThat(guard.salesClerkOnlyUsername(new JwtAuthenticationToken(jwt, List.of(
+                new SimpleGrantedAuthority("ROLE_SALES_CLERK"), new SimpleGrantedAuthority("ROLE_COMMERCIAL_MANAGER"))))).isNull();
+        assertThat(guard.salesClerkOnlyUsername(caller("ROLE_STOCKS_CLERK"))).isNull();
+    }
+
+    @Test
     void regionalRepAndCommercialManagerIgnoreAStrayLocationCode() {
         assertThat(guard.callerLocationCode(caller("ROLE_REGIONAL_REP"))).isNull();
         assertThat(guard.callerLocationCode(caller("ROLE_COMMERCIAL_MANAGER"))).isNull();

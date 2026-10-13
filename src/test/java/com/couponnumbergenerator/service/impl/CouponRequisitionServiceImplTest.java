@@ -1,13 +1,14 @@
 package com.couponnumbergenerator.service.impl;
 
+import com.couponnumbergenerator.dto.request.ApprovalDecisionRequest;
 import com.couponnumbergenerator.dto.request.CreateRequisitionRequest;
 import com.couponnumbergenerator.dto.request.DenominationLine;
 import com.couponnumbergenerator.dto.request.FulfillRequisitionRequest;
 import com.couponnumbergenerator.dto.request.RequisitionDecisionRequest;
 import com.couponnumbergenerator.dto.request.RequisitionLineRequest;
 import com.couponnumbergenerator.dto.request.TransferRequest;
+import com.couponnumbergenerator.dto.response.ApprovalRequestResponse;
 import com.couponnumbergenerator.dto.response.RequisitionResponse;
-import com.couponnumbergenerator.dto.response.TransferResultResponse;
 import com.couponnumbergenerator.enums.CouponStatus;
 import com.couponnumbergenerator.enums.RequisitionStatus;
 import com.couponnumbergenerator.exception.CouponBatchNotFoundException;
@@ -178,25 +179,33 @@ class CouponRequisitionServiceImplTest {
                 .hasMessageContaining("Department is required");
     }
 
-    @Test
-    void fulfillBuildsTheUnderlyingTransferAndLinksTheResultingApproval() {
-        CouponRequisition requisition = requisition(5L, RequisitionStatus.PENDING,
-                line(petrol, new BigDecimal("20"), "200", "0"));
-        when(couponRequisitionRepository.findById(5L)).thenReturn(Optional.of(requisition));
-
-        CouponApprovalRequest approvalStub = CouponApprovalRequest.builder().id(9L).build();
-        var pendingResponse = com.couponnumbergenerator.dto.response.ApprovalRequestResponse.from(approvalStub);
-        ActionOutcome<TransferResultResponse> outcome = new ActionOutcome.Pending<>(pendingResponse);
-        when(couponLifecycleService.transferByBatch(any(), eq(true))).thenReturn(outcome);
+    /** Stubs the transfer fulfill() builds (#9) and its immediate issue; returns the linked approval entity. */
+    private CouponApprovalRequest givenTransferIssued(ApprovalRequestResponse issued) {
         CouponApprovalRequest approval = CouponApprovalRequest.builder().id(9L).build();
+        when(couponLifecycleService.transferByBatch(any(), eq(true)))
+                .thenReturn(new ActionOutcome.Pending<>(ApprovalRequestResponse.from(approval)));
         when(couponApprovalRequestRepository.findById(9L)).thenReturn(Optional.of(approval));
+        when(couponLifecycleService.approve(eq(9L), any())).thenReturn(issued);
+        return approval;
+    }
 
-        ActionOutcome<TransferResultResponse> result = service.fulfill(5L, new FulfillRequisitionRequest(
+    @Test
+    void fulfillIssuesTheTransferStraightAwayUnderTheStocksControllersApproval() {
+        CouponRequisition requisition = requisition(5L, RequisitionStatus.APPROVED,
+                line(petrol, new BigDecimal("20"), "200", "0"));
+        requisition.setStocksApprovedBy("stocks-controller");
+        when(couponRequisitionRepository.findById(5L)).thenReturn(Optional.of(requisition));
+        ApprovalRequestResponse issued = ApprovalRequestResponse.from(CouponApprovalRequest.builder().id(9L).build());
+        CouponApprovalRequest approval = givenTransferIssued(issued);
+
+        ApprovalRequestResponse result = service.fulfill(5L, new FulfillRequisitionRequest(
                 10L, List.of(new RequisitionLineRequest(1L, new BigDecimal("20"), new BigDecimal("100"))),
                 CouponStatus.ALLOCATED, "issued to Commercial", "stock-clerk"));
 
-        assertThat(result).isSameAs(outcome);
+        assertThat(result).isSameAs(issued);
         assertThat(approval.getRequisition()).isSameAs(requisition);
+        // No second sign-off queue — the issue is recorded as authorised by the controller who approved the requisition.
+        verify(couponLifecycleService).approve(9L, new ApprovalDecisionRequest("stocks-controller", "issued to Commercial"));
 
         ArgumentCaptor<TransferRequest> captor = ArgumentCaptor.captor();
         verify(couponLifecycleService).transferByBatch(captor.capture(), eq(true));
@@ -211,7 +220,7 @@ class CouponRequisitionServiceImplTest {
 
     @Test
     void fulfillRejectsWhenTheBatchsFuelTypeDoesNotMatchTheLine() {
-        CouponRequisition requisition = requisition(5L, RequisitionStatus.PENDING,
+        CouponRequisition requisition = requisition(5L, RequisitionStatus.APPROVED,
                 line(diesel, new BigDecimal("20"), "200", "0"));
         when(couponRequisitionRepository.findById(5L)).thenReturn(Optional.of(requisition));
         // Batch 10 (stubbed in setUp) is petrol, but this line is a diesel request.
@@ -227,7 +236,7 @@ class CouponRequisitionServiceImplTest {
 
     @Test
     void fulfillFailsForAnUnknownBatch() {
-        CouponRequisition requisition = requisition(5L, RequisitionStatus.PENDING,
+        CouponRequisition requisition = requisition(5L, RequisitionStatus.APPROVED,
                 line(petrol, new BigDecimal("20"), "200", "0"));
         when(couponRequisitionRepository.findById(5L)).thenReturn(Optional.of(requisition));
         when(couponBatchRepository.findById(999L)).thenReturn(Optional.empty());
@@ -240,11 +249,10 @@ class CouponRequisitionServiceImplTest {
 
     @Test
     void fulfillAllowsAPartialDeliveryWithinTheOutstandingBalance() {
-        CouponRequisition requisition = requisition(5L, RequisitionStatus.PENDING,
+        CouponRequisition requisition = requisition(5L, RequisitionStatus.APPROVED,
                 line(petrol, new BigDecimal("20"), "200", "160"));
         when(couponRequisitionRepository.findById(5L)).thenReturn(Optional.of(requisition));
-        lenient().when(couponLifecycleService.transferByBatch(any(), eq(true)))
-                .thenReturn(new ActionOutcome.Applied<>(null));
+        givenTransferIssued(null);
 
         // Only 40L outstanding (200 requested - 160 already fulfilled) — asking for exactly that is fine.
         service.fulfill(5L, new FulfillRequisitionRequest(
@@ -258,7 +266,7 @@ class CouponRequisitionServiceImplTest {
 
     @Test
     void fulfillRejectsALitreAmountExceedingWhatsOutstanding() {
-        CouponRequisition requisition = requisition(5L, RequisitionStatus.PENDING,
+        CouponRequisition requisition = requisition(5L, RequisitionStatus.APPROVED,
                 line(petrol, new BigDecimal("20"), "200", "160"));
         when(couponRequisitionRepository.findById(5L)).thenReturn(Optional.of(requisition));
 
@@ -272,7 +280,7 @@ class CouponRequisitionServiceImplTest {
 
     @Test
     void fulfillRejectsLitresThatDoNotDivideEvenlyByTheDenomination() {
-        CouponRequisition requisition = requisition(5L, RequisitionStatus.PENDING,
+        CouponRequisition requisition = requisition(5L, RequisitionStatus.APPROVED,
                 line(petrol, new BigDecimal("20"), "200", "0"));
         when(couponRequisitionRepository.findById(5L)).thenReturn(Optional.of(requisition));
 
@@ -285,7 +293,7 @@ class CouponRequisitionServiceImplTest {
 
     @Test
     void fulfillRejectsALineForAFuelTypeAndDenominationNotOnTheRequisition() {
-        CouponRequisition requisition = requisition(5L, RequisitionStatus.PENDING,
+        CouponRequisition requisition = requisition(5L, RequisitionStatus.APPROVED,
                 line(petrol, new BigDecimal("20"), "200", "0"));
         when(couponRequisitionRepository.findById(5L)).thenReturn(Optional.of(requisition));
 
@@ -301,12 +309,7 @@ class CouponRequisitionServiceImplTest {
         CouponRequisition requisition = requisition(5L, RequisitionStatus.PARTIALLY_FULFILLED,
                 line(petrol, new BigDecimal("20"), "200", "40"));
         when(couponRequisitionRepository.findById(5L)).thenReturn(Optional.of(requisition));
-        CouponApprovalRequest approvalStub = CouponApprovalRequest.builder().id(9L).build();
-        var pendingResponse = com.couponnumbergenerator.dto.response.ApprovalRequestResponse.from(approvalStub);
-        when(couponLifecycleService.transferByBatch(any(), eq(true)))
-                .thenReturn(new ActionOutcome.Pending<>(pendingResponse));
-        when(couponApprovalRequestRepository.findById(9L))
-                .thenReturn(Optional.of(CouponApprovalRequest.builder().id(9L).build()));
+        givenTransferIssued(null);
 
         // A second batch is being drawn against for the remaining outstanding balance — allowed
         // to proceed even though the requisition already carries a partial delivery.
@@ -318,15 +321,39 @@ class CouponRequisitionServiceImplTest {
     }
 
     @Test
-    void fulfillFailsForARequisitionThatIsNotPending() {
-        CouponRequisition requisition = requisition(5L, RequisitionStatus.FULFILLED,
-                line(petrol, new BigDecimal("20"), "200", "200"));
+    void fulfillFailsUntilBothApprovalsAreInAndAfterItIsClosed() {
+        for (RequisitionStatus status : new RequisitionStatus[]{RequisitionStatus.PENDING,
+                RequisitionStatus.COMMERCIAL_APPROVED, RequisitionStatus.FULFILLED, RequisitionStatus.REJECTED}) {
+            CouponRequisition requisition = requisition(5L, status, line(petrol, new BigDecimal("20"), "200", "0"));
+            when(couponRequisitionRepository.findById(5L)).thenReturn(Optional.of(requisition));
+
+            assertThatThrownBy(() -> service.fulfill(5L, new FulfillRequisitionRequest(
+                    10L, List.of(new RequisitionLineRequest(1L, new BigDecimal("20"), new BigDecimal("20"))),
+                    null, null, "stock-clerk")))
+                    .isInstanceOf(RequisitionAlreadyDecidedException.class);
+        }
+        verify(couponLifecycleService, never()).transferByBatch(any(), anyBoolean());
+    }
+
+    @Test
+    void approvalRunsCommercialThenStocksInOrder() {
+        CouponRequisition requisition = requisition(5L, RequisitionStatus.PENDING,
+                line(petrol, new BigDecimal("20"), "200", "0"));
         when(couponRequisitionRepository.findById(5L)).thenReturn(Optional.of(requisition));
 
-        assertThatThrownBy(() -> service.fulfill(5L, new FulfillRequisitionRequest(
-                10L, List.of(new RequisitionLineRequest(1L, new BigDecimal("20"), new BigDecimal("20"))),
-                null, null, "stock-clerk")))
+        // Stocks can't approve before Commercial has.
+        assertThatThrownBy(() -> service.approveStocks(5L, "stocks-controller"))
                 .isInstanceOf(RequisitionAlreadyDecidedException.class);
+
+        RequisitionResponse afterCommercial = service.approveCommercial(5L, "commercial-manager");
+        assertThat(afterCommercial.status()).isEqualTo(RequisitionStatus.COMMERCIAL_APPROVED);
+        assertThat(afterCommercial.commercialApprovedBy()).isEqualTo("commercial-manager");
+        assertThatThrownBy(() -> service.approveCommercial(5L, "commercial-manager"))
+                .isInstanceOf(RequisitionAlreadyDecidedException.class);
+
+        RequisitionResponse afterStocks = service.approveStocks(5L, "stocks-controller");
+        assertThat(afterStocks.status()).isEqualTo(RequisitionStatus.APPROVED);
+        assertThat(afterStocks.stocksApprovedBy()).isEqualTo("stocks-controller");
     }
 
     @Test

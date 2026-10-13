@@ -7,6 +7,8 @@ import com.couponnumbergenerator.dto.response.ApiResponse;
 import com.couponnumbergenerator.dto.response.ApprovalRequestResponse;
 import com.couponnumbergenerator.dto.response.PagedResponse;
 import com.couponnumbergenerator.enums.ApprovalStatus;
+import com.couponnumbergenerator.exception.ApprovalRequestNotFoundException;
+import com.couponnumbergenerator.security.LocationAccessGuard;
 import com.couponnumbergenerator.service.CouponLifecycleService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -31,6 +33,7 @@ import org.springframework.web.bind.annotation.*;
 public class ApprovalController {
 
     private final CouponLifecycleService couponLifecycleService;
+    private final LocationAccessGuard locationAccessGuard;
 
     @GetMapping
     @Operation(summary = "The approval queue, optionally filtered by status (defaults to all)")
@@ -42,9 +45,16 @@ public class ApprovalController {
     }
 
     @GetMapping("/{id}")
-    @Operation(summary = "Get an approval request by ID")
-    public ResponseEntity<ApiResponse<ApprovalRequestResponse>> getApprovalRequest(@PathVariable Long id) {
-        return ResponseEntity.ok(ApiResponse.success(couponLifecycleService.getApprovalRequest(id)));
+    @Operation(summary = "Get an approval request by ID",
+            description = "404 for a Sales Clerk asking for anything but an issue against their own requisition.")
+    public ResponseEntity<ApiResponse<ApprovalRequestResponse>> getApprovalRequest(
+            @PathVariable Long id, Authentication authentication) {
+        ApprovalRequestResponse response = couponLifecycleService.getApprovalRequest(id);
+        String salesClerk = locationAccessGuard.salesClerkOnlyUsername(authentication);
+        if (salesClerk != null && !salesClerk.equals(response.requisitionRequestedBy())) {
+            throw new ApprovalRequestNotFoundException(id);
+        }
+        return ResponseEntity.ok(ApiResponse.success(response));
     }
 
     @PostMapping("/{id}/approve")
@@ -66,19 +76,19 @@ public class ApprovalController {
     }
 
     @PostMapping("/{id}/confirm-receipt")
-    @PreAuthorize("hasAnyRole('STOCKS_CONTROLLER','REGIONAL_REP','ADMIN','COMMERCIAL_MANAGER')")
+    @PreAuthorize("hasAnyRole('STOCKS_CONTROLLER','REGIONAL_REP','ADMIN','COMMERCIAL_MANAGER','SALES_CLERK')")
     @Operation(summary = "Confirm receipt of a TRANSFERSHIPMENT department-handoff transfer",
             description = "The receiving department's signature that the coupons actually arrived — the digital "
                     + "equivalent of the paper GRV/GIV \"Goods Received By\" line. Applies the transfer's real "
                     + "target status (or IN_STOCK if none was requested) and moves the coupons into the "
                     + "toLocation/toDepartment, re-validating against each coupon's current state. Only valid "
                     + "while the request is TRANSFERSHIPMENT — returns 409 otherwise. On success the approval "
-                    + "request's status becomes TRANSRECEIPT. An issue against a requisition can only be "
-                    + "received by a Commercial Manager (403 otherwise).")
+                    + "request's status becomes TRANSRECEIPT (the GRV). An issue against a requisition can only be "
+                    + "received by a Sales Clerk of the receiving department (403 otherwise).")
     public ResponseEntity<ApiResponse<ApprovalRequestResponse>> confirmReceipt(
             @PathVariable Long id, @Valid @RequestBody ReceiptConfirmationRequest request, Authentication authentication) {
-        assertRoleForRequisition(id, authentication, "ROLE_COMMERCIAL_MANAGER",
-                "Only a Commercial Manager can confirm receipt of a requisition issue");
+        assertRoleForRequisition(id, authentication, "ROLE_SALES_CLERK",
+                "Only a Sales Clerk can confirm receipt of a requisition issue");
         return ResponseEntity.ok(ApiResponse.success("Approval request %d received".formatted(id),
                 couponLifecycleService.confirmReceipt(id, request)));
     }

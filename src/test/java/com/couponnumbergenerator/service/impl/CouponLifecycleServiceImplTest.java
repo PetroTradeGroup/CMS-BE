@@ -308,6 +308,28 @@ class CouponLifecycleServiceImplTest {
     }
 
     @Test
+    void receiveBatchWithBookRangeReceivesOnlyThoseBooks() {
+        CouponBatch batch = CouponBatch.builder()
+                .id(10L).batchNumber("BAT-X").originLocation(depot).build();
+        Coupon book1 = coupon("PU002M0000001", CouponStatus.GENERATED);
+        book1.setBookNumber(1);
+        Coupon book2 = coupon("PU002M0000101", CouponStatus.GENERATED);
+        book2.setBookNumber(2);
+        when(couponBatchRepository.findById(10L)).thenReturn(Optional.of(batch));
+        when(couponRepository.findByBatchIdAndStatus(10L, CouponStatus.GENERATED)).thenReturn(List.of(book1, book2));
+
+        TransitionResultResponse result = service.receiveBatch(10L, new ReceiveBatchRequest(null, "tester", 1, 1));
+
+        assertThat(result.count()).isEqualTo(1);
+        assertThat(book1.getStatus()).isEqualTo(CouponStatus.IN_STOCK);
+        assertThat(book2.getStatus()).isEqualTo(CouponStatus.GENERATED);
+
+        assertThatThrownBy(() -> service.receiveBatch(10L, new ReceiveBatchRequest(null, "tester", 5, 9)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("books 5-9");
+    }
+
+    @Test
     void receiveBatchFailsWhenBatchIsUnknownOrEmpty() {
         when(couponBatchRepository.findById(99L)).thenReturn(Optional.empty());
         assertThatThrownBy(() -> service.receiveBatch(99L, ReceiveBatchRequest.empty()))
@@ -901,12 +923,16 @@ class CouponLifecycleServiceImplTest {
     @Test
     void transferByMultipleDenominationLinesWithDepartmentBreaksDownEachDenomination() {
         when(couponBatchRepository.findById(10L)).thenReturn(Optional.of(batch(10L, 100)));
+        Coupon first = denominatedCoupon("PU006M0000011", CouponStatus.IN_STOCK, 11, "20");
+        Coupon second = denominatedCoupon("PU006M0000012", CouponStatus.IN_STOCK, 12, "20");
+        Coupon third = denominatedCoupon("PU006M0000021", CouponStatus.IN_STOCK, 21, "50");
+        first.setBookNumber(1);
+        second.setBookNumber(1);
+        third.setBookNumber(3);
         when(couponRepository.findByBatchIdAndDenominationOrderByBatchSequenceAsc(10L, new BigDecimal("20")))
-                .thenReturn(List.of(
-                        denominatedCoupon("PU006M0000011", CouponStatus.IN_STOCK, 11, "20"),
-                        denominatedCoupon("PU006M0000012", CouponStatus.IN_STOCK, 12, "20")));
+                .thenReturn(List.of(first, second));
         when(couponRepository.findByBatchIdAndDenominationOrderByBatchSequenceAsc(10L, new BigDecimal("50")))
-                .thenReturn(List.of(denominatedCoupon("PU006M0000021", CouponStatus.IN_STOCK, 21, "50")));
+                .thenReturn(List.of(third));
         when(departmentRepository.findById(2L)).thenReturn(Optional.of(commercial));
         when(couponApprovalRequestRepository.save(any())).thenAnswer(savingApproval());
 
@@ -921,6 +947,8 @@ class CouponLifecycleServiceImplTest {
                 new DenominationCountResponse(new BigDecimal("20"), 2),
                 new DenominationCountResponse(new BigDecimal("50"), 1));
         assertThat(result.batchSequences()).containsExactly(11, 12, 21);
+        // Distinct books, ascending — what the GIV/GRV print as "books issued".
+        assertThat(result.bookNumbers()).containsExactly(1, 3);
     }
 
     @Test

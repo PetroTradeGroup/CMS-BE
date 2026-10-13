@@ -1,5 +1,6 @@
 package com.couponnumbergenerator.service;
 
+import com.couponnumbergenerator.dto.response.CouponActivityResponse;
 import com.couponnumbergenerator.dto.response.RedemptionSummaryResponse;
 
 import java.io.IOException;
@@ -12,4 +13,7 @@ public interface RedemptionSummaryExportService {
 
     /** Streams a redemption summary as a landscape-A4 PDF table — same rows as exportExcel. */
     void exportPdf(RedemptionSummaryResponse summary, OutputStream outputStream) throws IOException;
+
+    /** Streams a coupon activity or balance report as .xlsx (title is the first line) — one row per status/fuel type/denomination, with fuel-type and status subtotals. */
+    void exportActivityExcel(CouponActivityResponse activity, String title, OutputStream outputStream) throws IOException;
 }

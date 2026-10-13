@@ -142,9 +142,17 @@ public class CouponLifecycleServiceImpl implements CouponLifecycleService {
                 : resolveLocation(request.locationId());
 
         List<Coupon> coupons = couponRepository.findByBatchIdAndStatus(batchId, CouponStatus.GENERATED);
+        if (request.isPartial()) {
+            coupons = coupons.stream()
+                    .filter(c -> c.getBookNumber() != null
+                            && c.getBookNumber() >= request.fromBook() && c.getBookNumber() <= request.toBook())
+                    .toList();
+        }
         if (coupons.isEmpty()) {
-            throw new IllegalArgumentException(
-                    "Batch %s has no coupons awaiting receipt".formatted(batch.getBatchNumber()));
+            throw new IllegalArgumentException(request.isPartial()
+                    ? "Batch %s has no coupons awaiting receipt in books %d-%d"
+                            .formatted(batch.getBatchNumber(), request.fromBook(), request.toBook())
+                    : "Batch %s has no coupons awaiting receipt".formatted(batch.getBatchNumber()));
         }
 
         applyTransition(coupons, IN_STOCK, location, null, null, request.performedBy());
@@ -395,15 +403,21 @@ public class CouponLifecycleServiceImpl implements CouponLifecycleService {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         String callerLocationCode = locationAccessGuard.callerLocationCode(authentication);
 
+        String salesClerk = locationAccessGuard.salesClerkOnlyUsername(authentication);
+
         Page<CouponApprovalRequest> page;
-        if (callerLocationCode != null) {
+        if (salesClerk != null) {
+            // A Sales Clerk only sees the issues against their own requisitions — what they receive.
+            page = couponApprovalRequestRepository.findAll(
+                    ApprovalRequestSpecification.withFilters(requestType, status, null, null, salesClerk), pageable);
+        } else if (callerLocationCode != null) {
             // Station-scoped caller: Team Leader sees every request at their site; a plain
             // Attendant is narrowed further to just their own.
             String callerUsername = locationAccessGuard.callerIsTeamLeader(authentication)
                     ? null
                     : locationAccessGuard.callerUsername(authentication);
             page = couponApprovalRequestRepository.findAll(
-                    ApprovalRequestSpecification.withFilters(requestType, status, callerLocationCode, callerUsername),
+                    ApprovalRequestSpecification.withFilters(requestType, status, callerLocationCode, callerUsername, null),
                     pageable);
         } else if (requestType == null && status == null) {
             page = couponApprovalRequestRepository.findAll(pageable);
@@ -553,6 +567,7 @@ public class CouponLifecycleServiceImpl implements CouponLifecycleService {
                 .couponCount(coupons.size())
                 .denominationBreakdown(denominationBreakdown(coupons))
                 .batchSequences(batchSequences(coupons))
+                .bookNumbers(coupons.stream().map(Coupon::getBookNumber).filter(Objects::nonNull).distinct().sorted().toList())
                 .batch(batch)
                 .rangeStart(rangeStart)
                 .rangeEnd(rangeEnd)

@@ -4,6 +4,8 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Component;
 
+import java.util.Set;
+
 /**
  * Retail callers (Attendant/Team Leader) carry a {@code locationCode} claim, stamped onto their
  * token at login from their Keycloak user attribute — it identifies which station they're
@@ -40,6 +42,20 @@ public class LocationAccessGuard {
     public boolean callerIsTeamLeader(Authentication authentication) {
         return hasRole(authentication, "ROLE_TEAM_LEADER");
     }
+
+    /**
+     * A Sales Clerk with no broader role only ever sees their own requisitions — and the issues
+     * (transfers) raised against them, which they receive. Returns their username to scope by, or
+     * null when the caller has any broader role (Stocks, Commercial, Admin, …) and sees everything.
+     */
+    public String salesClerkOnlyUsername(Authentication authentication) {
+        boolean clerkOnly = hasRole(authentication, "ROLE_SALES_CLERK")
+                && BROADER_THAN_SALES_CLERK.stream().noneMatch(role -> hasRole(authentication, role));
+        return clerkOnly ? callerUsername(authentication) : null;
+    }
+
+    private static final Set<String> BROADER_THAN_SALES_CLERK = Set.of("ROLE_ADMIN", "ROLE_STOCKS_CLERK",
+            "ROLE_STOCKS_CONTROLLER", "ROLE_REGIONAL_REP", "ROLE_ACCOUNTS_CLERK", "ROLE_COMMERCIAL_MANAGER");
 
     private boolean hasRole(Authentication authentication, String role) {
         return authentication.getAuthorities().stream()

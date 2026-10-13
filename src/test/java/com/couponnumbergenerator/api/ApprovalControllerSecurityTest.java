@@ -1,6 +1,7 @@
 package com.couponnumbergenerator.api;
 
 import com.couponnumbergenerator.dto.response.ApprovalRequestResponse;
+import com.couponnumbergenerator.security.LocationAccessGuard;
 import com.couponnumbergenerator.security.SecurityConfig;
 import com.couponnumbergenerator.service.CouponLifecycleService;
 import com.couponnumbergenerator.service.SecurityAuditService;
@@ -14,13 +15,30 @@ import org.springframework.test.web.servlet.MockMvc;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /** Only a Stocks Controller signs off an issue raised against a requisition. */
 @WebMvcTest(controllers = ApprovalController.class)
-@Import(SecurityConfig.class)
+@Import({SecurityConfig.class, LocationAccessGuard.class})
 class ApprovalControllerSecurityTest {
+
+    @Test
+    void salesClerkOnlyOpensIssuesAgainstTheirOwnRequisitions() throws Exception {
+        ApprovalRequestResponse approval = mock(ApprovalRequestResponse.class);
+        when(approval.requisitionRequestedBy()).thenReturn("clerk1");
+        when(couponLifecycleService.getApprovalRequest(1L)).thenReturn(approval);
+
+        mockMvc.perform(get("/api/v1/approvals/1").with(jwt()
+                        .jwt(token -> token.claim("preferred_username", "clerk1"))
+                        .authorities(() -> "ROLE_SALES_CLERK")))
+                .andExpect(status().isOk());
+        mockMvc.perform(get("/api/v1/approvals/1").with(jwt()
+                        .jwt(token -> token.claim("preferred_username", "clerk2"))
+                        .authorities(() -> "ROLE_SALES_CLERK")))
+                .andExpect(status().isNotFound());
+    }
 
     private static final String BODY = """
             {"approvedBy": "someone"}""";
@@ -62,16 +80,16 @@ class ApprovalControllerSecurityTest {
     }
 
     @Test
-    void onlyCommercialManagerConfirmsReceiptOfARequisitionIssue() throws Exception {
+    void onlySalesClerkConfirmsReceiptOfARequisitionIssue() throws Exception {
         givenApproval(5L);
         String body = """
                 {"receivedBy": "someone"}""";
-        for (String role : new String[]{"ROLE_STOCKS_CONTROLLER", "ROLE_REGIONAL_REP", "ROLE_ADMIN"}) {
+        for (String role : new String[]{"ROLE_STOCKS_CONTROLLER", "ROLE_REGIONAL_REP", "ROLE_ADMIN", "ROLE_COMMERCIAL_MANAGER"}) {
             mockMvc.perform(post("/api/v1/approvals/1/confirm-receipt").with(jwt().authorities(() -> role))
                             .contentType("application/json").content(body))
                     .andExpect(status().isForbidden());
         }
-        mockMvc.perform(post("/api/v1/approvals/1/confirm-receipt").with(jwt().authorities(() -> "ROLE_COMMERCIAL_MANAGER"))
+        mockMvc.perform(post("/api/v1/approvals/1/confirm-receipt").with(jwt().authorities(() -> "ROLE_SALES_CLERK"))
                         .contentType("application/json").content(body))
                 .andExpect(status().isOk());
     }

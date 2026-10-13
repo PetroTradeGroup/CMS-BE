@@ -1,5 +1,7 @@
 package com.couponnumbergenerator.service.impl;
 
+import com.couponnumbergenerator.dto.response.CouponActivityResponse;
+import com.couponnumbergenerator.dto.response.CouponActivityResponse.StatusSummary;
 import com.couponnumbergenerator.dto.response.RedemptionSummaryResponse;
 import com.couponnumbergenerator.dto.response.RedemptionSummaryResponse.DenominationLine;
 import com.couponnumbergenerator.dto.response.RedemptionSummaryResponse.FuelTypeSummary;
@@ -74,6 +76,60 @@ public class RedemptionSummaryExportServiceImpl implements RedemptionSummaryExpo
                 sheet.autoSizeColumn(i);
             }
             workbook.write(outputStream);
+        }
+    }
+
+    @Override
+    public void exportActivityExcel(CouponActivityResponse activity, String title, OutputStream outputStream) throws IOException {
+        String[] columns = {"Status", "Fuel Type", "Denomination", "Coupons", "Litres"};
+        try (Workbook workbook = new XSSFWorkbook()) {
+            Sheet sheet = workbook.createSheet("Coupon Volume");
+            CellStyle boldStyle = workbook.createCellStyle();
+            org.apache.poi.ss.usermodel.Font boldFont = workbook.createFont();
+            boldFont.setBold(true);
+            boldStyle.setFont(boldFont);
+
+            int rowIndex = 0;
+            rowIndex = writeMetaRow(sheet, rowIndex, title);
+            rowIndex = writeMetaRow(sheet, rowIndex, "Status: %s   Location: %s   Fuel type filter: %s   Generated: %s".formatted(
+                    activity.status() == null ? "All" : activity.status(),
+                    activity.locationId() == null ? "All sites" : "Site #" + activity.locationId(),
+                    activity.fuelTypeId() == null ? "All" : "#" + activity.fuelTypeId(),
+                    TIMESTAMP_FORMAT.format(LocalDateTime.now())));
+            rowIndex++;
+            writeRow(sheet.createRow(rowIndex++), boldStyle, (Object[]) columns);
+
+            for (StatusSummary status : activity.byStatus()) {
+                for (FuelTypeSummary fuelType : status.byFuelType()) {
+                    for (DenominationLine line : fuelType.byDenomination()) {
+                        writeRow(sheet.createRow(rowIndex++), null, status.status().name(), fuelType.fuelTypeName(),
+                                line.denomination().toPlainString(), line.count(), line.litres().toPlainString());
+                    }
+                    writeRow(sheet.createRow(rowIndex++), boldStyle, status.status().name(),
+                            fuelType.fuelTypeName() + " subtotal", "", fuelType.count(), fuelType.litres().toPlainString());
+                }
+                writeRow(sheet.createRow(rowIndex++), boldStyle, status.status().name() + " total", "", "",
+                        status.count(), status.litres().toPlainString());
+            }
+            for (int i = 0; i < columns.length; i++) {
+                sheet.autoSizeColumn(i);
+            }
+            workbook.write(outputStream);
+        }
+    }
+
+    /** Long values become numeric cells (so Excel can sum them); everything else is text. */
+    private void writeRow(Row row, CellStyle style, Object... values) {
+        for (int i = 0; i < values.length; i++) {
+            Cell cell = row.createCell(i);
+            if (values[i] instanceof Long number) {
+                cell.setCellValue(number);
+            } else {
+                cell.setCellValue(String.valueOf(values[i]));
+            }
+            if (style != null) {
+                cell.setCellStyle(style);
+            }
         }
     }
 

@@ -14,6 +14,10 @@ public record RequisitionResponse(
         String requestedBy,
         LocalDateTime requestedAt,
         RequisitionStatus status,
+        String commercialApprovedBy,
+        LocalDateTime commercialApprovedAt,
+        String stocksApprovedBy,
+        LocalDateTime stocksApprovedAt,
         String decidedBy,
         LocalDateTime decidedAt,
         String decisionReason
@@ -27,6 +31,10 @@ public record RequisitionResponse(
                 requisition.getRequestedBy(),
                 requisition.getRequestedAt(),
                 requisition.getStatus(),
+                requisition.getCommercialApprovedBy(),
+                requisition.getCommercialApprovedAt(),
+                requisition.getStocksApprovedBy(),
+                requisition.getStocksApprovedAt(),
                 requisition.getDecidedBy(),
                 requisition.getDecidedAt(),
                 requisition.getDecisionReason()

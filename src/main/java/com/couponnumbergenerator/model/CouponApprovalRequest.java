@@ -69,6 +69,17 @@ public class CouponApprovalRequest {
     @Builder.Default
     private List<Integer> batchSequences = new ArrayList<>();
 
+    /**
+     * Distinct book numbers (within the batch) the coupons this request covers belong to, ascending,
+     * fixed at creation alongside {@link #batchSequences} — what the GIV/GRV list as "books issued".
+     * Coupons not generated into whole books have no book number and are omitted.
+     */
+    @ElementCollection
+    @CollectionTable(name = "coupon_approval_request_book_numbers", joinColumns = @JoinColumn(name = "approval_request_id"))
+    @Column(name = "book_number")
+    @Builder.Default
+    private List<Integer> bookNumbers = new ArrayList<>();
+
     /** Only set for TRANSFER-origin requests. */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "batch_id")

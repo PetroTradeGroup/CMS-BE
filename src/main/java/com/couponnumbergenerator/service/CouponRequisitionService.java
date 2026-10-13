@@ -4,10 +4,10 @@ import com.couponnumbergenerator.dto.request.AutoFulfillRequisitionRequest;
 import com.couponnumbergenerator.dto.request.CreateRequisitionRequest;
 import com.couponnumbergenerator.dto.request.FulfillRequisitionRequest;
 import com.couponnumbergenerator.dto.request.RequisitionDecisionRequest;
+import com.couponnumbergenerator.dto.response.ApprovalRequestResponse;
 import com.couponnumbergenerator.dto.response.AutoFulfillResponse;
 import com.couponnumbergenerator.dto.response.PagedResponse;
 import com.couponnumbergenerator.dto.response.RequisitionResponse;
-import com.couponnumbergenerator.dto.response.TransferResultResponse;
 import com.couponnumbergenerator.enums.RequisitionStatus;
 import org.springframework.data.domain.Pageable;
 
@@ -26,13 +26,20 @@ public interface CouponRequisitionService {
      */
     RequisitionResponse create(CreateRequisitionRequest request, String callerDepartmentCode);
 
+    /** Commercial (Manager or Rep) signs off a PENDING requisition → COMMERCIAL_APPROVED. */
+    RequisitionResponse approveCommercial(Long requisitionId, String approvedBy);
+
+    /** The Stocks Controller signs off a COMMERCIAL_APPROVED requisition → APPROVED, ready to issue. */
+    RequisitionResponse approveStocks(Long requisitionId, String approvedBy);
+
     /**
-     * Stock's response to a requisition: builds and submits the underlying transfer for the
-     * litres being issued right now (which may be less than what's outstanding — a partial
-     * delivery). The resulting approval request is linked back to this requisition so its
-     * lines' fulfilled-litres update once the receiving department confirms receipt.
+     * A Stocks Clerk issues against an APPROVED (or PARTIALLY_FULFILLED) requisition — the GIV: builds
+     * the underlying transfer for the litres issued right now (which may be less than what's
+     * outstanding — a partial delivery) and, since the Stocks Controller already approved the
+     * requisition, issues it straight to IN_TRANSIT. The transfer is linked back to this requisition
+     * so its lines' fulfilled-litres update once the receiving department confirms receipt (the GRV).
      */
-    ActionOutcome<TransferResultResponse> fulfill(Long requisitionId, FulfillRequisitionRequest request);
+    ApprovalRequestResponse fulfill(Long requisitionId, FulfillRequisitionRequest request);
 
     /**
      * Fulfils as much of the requisition's outstanding lines as current stock allows, in whole
@@ -43,7 +50,7 @@ public interface CouponRequisitionService {
      */
     AutoFulfillResponse autoFulfill(Long requisitionId, AutoFulfillRequisitionRequest request);
 
-    /** Declines a pending requisition outright; a reason is required. */
+    /** Declines a requisition at any non-terminal stage (closing out the rest of a partial one); a reason is required. */
     RequisitionResponse reject(Long requisitionId, RequisitionDecisionRequest decision);
 
     RequisitionResponse getRequisition(Long requisitionId);

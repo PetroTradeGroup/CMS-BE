@@ -14,6 +14,8 @@ public record ApprovalRequestResponse(
         int count,
         List<DenominationCountResponse> denominations,
         List<Integer> batchSequences,
+        /** Distinct book numbers within the batch, fixed at creation like {@code batchSequences}. */
+        List<Integer> bookNumbers,
         List<String> couponNumbers,
         String batchNumber,
         Integer rangeStart,
@@ -55,6 +57,7 @@ public record ApprovalRequestResponse(
                 request.getCouponCount(),
                 request.getDenominationBreakdown().stream().map(DenominationCountResponse::from).toList(),
                 request.getBatchSequences(),
+                request.getBookNumbers(),
                 request.getCouponNumbers(),
                 request.getBatch() == null ? null : request.getBatch().getBatchNumber(),
                 request.getRangeStart(),
