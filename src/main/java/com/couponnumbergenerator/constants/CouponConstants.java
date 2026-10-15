@@ -17,6 +17,7 @@ public final class CouponConstants {
     public static final String INSIGHTS_PATH = "/insights";
     public static final String AI_PATH = "/ai";
     public static final String LOCATIONS_PATH = "/locations";
+    public static final String COMPANIES_PATH = "/companies";
     public static final String BATCHES_PATH = "/batches";
     public static final String INVENTORY_PATH = "/inventory";
     public static final String DEPARTMENTS_PATH = "/departments";

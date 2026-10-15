@@ -52,6 +52,26 @@ class RedemptionControllerSecurityTest {
     }
 
     @Test
+    void repAdminAndStocksControllerSeeTheLogButStocksClerkDoesNot() throws Exception {
+        for (String path : new String[]{"/api/v1/redemptions/log", "/api/v1/redemptions/log/totals"}) {
+            for (String role : new String[]{"ROLE_REGIONAL_REP", "ROLE_RETAIL_MANAGER", "ROLE_ADMIN", "ROLE_STOCKS_CONTROLLER"}) {
+                mockMvc.perform(get(path).with(jwt().authorities(() -> role)))
+                        .andExpect(status().isOk());
+            }
+            mockMvc.perform(get(path).with(jwt().authorities(() -> "ROLE_STOCKS_CLERK")))
+                    .andExpect(status().isForbidden());
+        }
+    }
+
+    @Test
+    void attendantBreakdownStaysRepAndTeamLeaderOnly() throws Exception {
+        mockMvc.perform(get("/api/v1/redemptions/summary/by-attendant").with(jwt().authorities(() -> "ROLE_REGIONAL_REP")))
+                .andExpect(status().isOk());
+        mockMvc.perform(get("/api/v1/redemptions/summary/by-attendant").with(jwt().authorities(() -> "ROLE_ADMIN")))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
     void attendantTeamLeaderAndAdminCanVerifyCodes() throws Exception {
         for (String role : new String[]{"ROLE_ATTENDANT", "ROLE_TEAM_LEADER", "ROLE_ADMIN"}) {
             mockMvc.perform(get("/api/v1/redemptions/scan/code/K7M4QX2").with(jwt().authorities(() -> role)))

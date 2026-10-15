@@ -10,6 +10,7 @@
       { "name": "STOCKS_CONTROLLER", "description": "Same as Stocks Clerk plus approval sign-off; second approval on requisitions" },
       { "name": "SALES_CLERK", "description": "Raise requisitions; confirm receipt (GRV) of what Stocks issues against them. Sees only their own" },
       { "name": "REGIONAL_REP", "description": "Commercial's first approval on requisitions; approve transfers; sees redemptions at every site" },
+      { "name": "RETAIL_MANAGER", "description": "Supervises the Regional Reps; everything a Regional Rep can do, across every site" },
       { "name": "COMMERCIAL_MANAGER", "description": "Commercial's first approval on requisitions" },
       { "name": "ACCOUNTS_CLERK", "description": "Raise requisitions, invoicing" },
       { "name": "ATTENDANT", "description": "Scan coupons at the pump" },
@@ -252,6 +253,18 @@
       "credentials": [{ "type": "password", "value": "dev", "temporary": false }],
       "groups": ["/COMMERCIAL"],
       "realmRoles": ["REGIONAL_REP"],
+      "attributes": { "department": ["COMMERCIAL"] }
+    },
+    {
+      "username": "retail.manager",
+      "enabled": true,
+      "email": "retail.manager@petrotrade.dev",
+      "emailVerified": true,
+      "firstName": "Retail",
+      "lastName": "Manager",
+      "credentials": [{ "type": "password", "value": "dev", "temporary": false }],
+      "groups": ["/COMMERCIAL"],
+      "realmRoles": ["RETAIL_MANAGER"],
       "attributes": { "department": ["COMMERCIAL"] }
     },
     {

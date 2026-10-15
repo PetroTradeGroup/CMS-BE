@@ -17,5 +17,8 @@ public record UpdateLocationRequest(
         String address,
 
         @NotNull(message = "Active flag is required")
-        Boolean active
+        Boolean active,
+
+        /** Omit to keep the current company. */
+        Long companyId
 ) {}

@@ -45,7 +45,7 @@ class InventorySummaryRepositoryTest {
         // HQ is seeded by the V2 migration.
         hq = locationRepository.findByCode("HQ").orElseThrow();
         depot = locationRepository.findByCode("DEP1").orElseGet(() -> locationRepository.save(
-                Location.builder().code("DEP1").name("North Depot").type(LocationType.DEPOT).build()));
+                Location.builder().code("DEP1").name("North Depot").type(LocationType.DEPOT).company(hq.getCompany()).build()));
         petrol = fuelTypeRepository.findAll().stream()
                 .filter(ft -> ft.getName().equals("PETROL")).findFirst()
                 .orElseGet(() -> fuelTypeRepository.save(

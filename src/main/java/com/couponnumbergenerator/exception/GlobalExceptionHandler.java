@@ -41,6 +41,12 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.error(ex.getMessage()));
     }
 
+    @ExceptionHandler(CompanyNotFoundException.class)
+    public ResponseEntity<ApiResponse<Void>> handleCompanyNotFound(CompanyNotFoundException ex) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(ApiResponse.error(ex.getMessage()));
+    }
+
     @ExceptionHandler(LocationNotFoundException.class)
     public ResponseEntity<ApiResponse<Void>> handleLocationNotFound(LocationNotFoundException ex) {
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
@@ -185,7 +191,7 @@ public class GlobalExceptionHandler {
     /** Invalid sort/filter property in a query (e.g. ?sort=notARealField) — client input, not a server fault. */
     @ExceptionHandler({InvalidDataAccessApiUsageException.class, PropertyReferenceException.class})
     public ResponseEntity<ApiResponse<Void>> handleInvalidQueryProperty(RuntimeException ex) {
-        log.warn("Invalid query property: {}", ex.getMessage());
+        log.warn("Invalid query property: {}", ex.getMessage(), ex); // stack trace: these can come from deep inside a query
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(ApiResponse.error("Invalid query parameter — check your sort/filter fields: " + ex.getMessage()));
     }

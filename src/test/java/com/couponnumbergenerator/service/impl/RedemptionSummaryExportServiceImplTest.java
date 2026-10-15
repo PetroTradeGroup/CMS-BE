@@ -51,6 +51,13 @@ class RedemptionSummaryExportServiceImplTest {
             assertThat(grandTotal.getCell(0).getStringCellValue()).isEqualTo("Grand Total");
             assertThat(grandTotal.getCell(2).getNumericCellValue()).isEqualTo(4.0);
             assertThat(grandTotal.getCell(3).getStringCellValue()).isEqualTo("110.00");
+
+            assertThat(sheet.getRow(1).getCell(0).getStringCellValue()).startsWith("Company: Redan");
+            assertThat(sheet.getRow(9).getCell(1).getStringCellValue()).isEqualTo("Site");
+            Row site = sheet.getRow(10);
+            assertThat(site.getCell(0).getStringCellValue()).isEqualTo("Redan");
+            assertThat(site.getCell(1).getStringCellValue()).isEqualTo("RD7 — Redan 7th Street");
+            assertThat(site.getCell(2).getNumericCellValue()).isEqualTo(4.0);
         }
     }
 
@@ -70,7 +77,8 @@ class RedemptionSummaryExportServiceImplTest {
                 new DenominationLine(new BigDecimal("50"), 1, new BigDecimal("50.00")));
         FuelTypeSummary fuelType = new FuelTypeSummary(1L, "Diesel", 4, new BigDecimal("110.00"), lines);
         return new RedemptionSummaryResponse(
-                LocalDate.of(2026, 8, 1), LocalDate.of(2026, 8, 1), null, null, null,
-                4, new BigDecimal("110.00"), List.of(fuelType));
+                LocalDate.of(2026, 8, 1), LocalDate.of(2026, 8, 1), null, null, 7L, "Redan", null, null,
+                4, new BigDecimal("110.00"), List.of(fuelType),
+                List.of(new RedemptionSummaryResponse.SiteLine(3L, "RD7", "Redan 7th Street", "Redan", 4, new BigDecimal("110.00"))));
     }
 }

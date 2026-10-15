@@ -135,7 +135,7 @@ public class RequisitionController {
     }
 
     @PostMapping("/{id}/commercial-approve")
-    @PreAuthorize("hasAnyRole('COMMERCIAL_MANAGER','REGIONAL_REP')")
+    @PreAuthorize("hasAnyRole('COMMERCIAL_MANAGER','REGIONAL_REP','RETAIL_MANAGER')")
     @Operation(summary = "Commercial's approval — the first sign-off",
             description = "The Commercial Manager or Rep approves a PENDING requisition raised by a Sales Clerk; "
                     + "it moves to COMMERCIAL_APPROVED and on to the Stocks Controller. No body — the approver "
@@ -159,7 +159,7 @@ public class RequisitionController {
     }
 
     @PostMapping("/{id}/reject")
-    @PreAuthorize("hasAnyRole('STOCKS_CONTROLLER','COMMERCIAL_MANAGER','REGIONAL_REP')")
+    @PreAuthorize("hasAnyRole('STOCKS_CONTROLLER','COMMERCIAL_MANAGER','REGIONAL_REP','RETAIL_MANAGER')")
     @Operation(summary = "Reject a requisition, or close out what's left of a partial one",
             description = "A reason is required. Whoever's turn it is rejects: Commercial (Manager or Rep) while "
                     + "PENDING, the Stocks Controller from COMMERCIAL_APPROVED onwards (403 otherwise). Rejecting a "
@@ -169,7 +169,7 @@ public class RequisitionController {
             @PathVariable Long id, @Valid @RequestBody RequisitionDecisionRequest request, Authentication authentication) {
         boolean commercialStage = couponRequisitionService.getRequisition(id).status() == RequisitionStatus.PENDING;
         Set<String> allowed = commercialStage
-                ? Set.of("ROLE_COMMERCIAL_MANAGER", "ROLE_REGIONAL_REP")
+                ? Set.of("ROLE_COMMERCIAL_MANAGER", "ROLE_REGIONAL_REP", "ROLE_RETAIL_MANAGER")
                 : Set.of("ROLE_STOCKS_CONTROLLER");
         if (authentication.getAuthorities().stream().noneMatch(a -> allowed.contains(a.getAuthority()))) {
             throw new AccessDeniedException(commercialStage

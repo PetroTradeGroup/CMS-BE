@@ -18,5 +18,8 @@ public record CreateLocationRequest(
         LocationType type,
 
         @Size(max = 255, message = "Address must be at most 255 characters")
-        String address
+        String address,
+
+        /** Defaults to Petrotrade when omitted. */
+        Long companyId
 ) {}

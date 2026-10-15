@@ -58,7 +58,7 @@ public class ApprovalController {
     }
 
     @PostMapping("/{id}/approve")
-    @PreAuthorize("hasAnyRole('STOCKS_CONTROLLER','REGIONAL_REP','ADMIN')")
+    @PreAuthorize("hasAnyRole('STOCKS_CONTROLLER','REGIONAL_REP','RETAIL_MANAGER','ADMIN')")
     @Operation(summary = "Approve a pending request",
             description = "Executes the move, re-validating against each coupon's current state. For a TRANSFER "
                     + "that changes department, this only moves the coupons to IN_TRANSIT and the approval request "
@@ -76,7 +76,7 @@ public class ApprovalController {
     }
 
     @PostMapping("/{id}/confirm-receipt")
-    @PreAuthorize("hasAnyRole('STOCKS_CONTROLLER','REGIONAL_REP','ADMIN','COMMERCIAL_MANAGER','SALES_CLERK')")
+    @PreAuthorize("hasAnyRole('STOCKS_CONTROLLER','REGIONAL_REP','RETAIL_MANAGER','ADMIN','COMMERCIAL_MANAGER','SALES_CLERK')")
     @Operation(summary = "Confirm receipt of a TRANSFERSHIPMENT department-handoff transfer",
             description = "The receiving department's signature that the coupons actually arrived — the digital "
                     + "equivalent of the paper GRV/GIV \"Goods Received By\" line. Applies the transfer's real "
@@ -94,7 +94,7 @@ public class ApprovalController {
     }
 
     @PostMapping("/{id}/reject")
-    @PreAuthorize("hasAnyRole('STOCKS_CONTROLLER','REGIONAL_REP','ADMIN')")
+    @PreAuthorize("hasAnyRole('STOCKS_CONTROLLER','REGIONAL_REP','RETAIL_MANAGER','ADMIN')")
     @Operation(summary = "Reject a pending request", description = "No coupons are touched. A reason is required. "
             + "An issue against a requisition can only be rejected by a Stocks Controller (403 otherwise).")
     public ResponseEntity<ApiResponse<ApprovalRequestResponse>> reject(

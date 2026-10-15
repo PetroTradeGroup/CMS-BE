@@ -7,10 +7,13 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.Collection;
+import java.util.List;
 
 public interface AppUserRepository extends JpaRepository<AppUser, Long> {
 
     boolean existsByUsernameIgnoreCase(String username);
+
+    List<AppUser> findByUsernameIn(Collection<String> usernames);
 
     Page<AppUser> findBySyncStatusIn(Collection<UserSyncStatus> syncStatuses, Pageable pageable);
 }

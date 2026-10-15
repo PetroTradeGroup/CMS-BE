@@ -8,10 +8,13 @@ import com.couponnumbergenerator.dto.response.ApiResponse;
 import com.couponnumbergenerator.dto.response.ApprovalRequestResponse;
 import com.couponnumbergenerator.dto.response.PagedResponse;
 import com.couponnumbergenerator.dto.response.RedemptionByAttendantResponse;
+import com.couponnumbergenerator.dto.response.RedemptionLogEntry;
+import com.couponnumbergenerator.dto.response.RedemptionLogTotals;
 import com.couponnumbergenerator.dto.response.RedemptionSummaryResponse;
 import com.couponnumbergenerator.dto.response.ScanResponse;
 import com.couponnumbergenerator.enums.ApprovalRequestType;
 import com.couponnumbergenerator.enums.ApprovalStatus;
+import com.couponnumbergenerator.enums.CouponType;
 import com.couponnumbergenerator.exception.ApprovalRequestNotFoundException;
 import com.couponnumbergenerator.service.CouponLifecycleService;
 import com.couponnumbergenerator.service.QrCodeService;
@@ -24,7 +27,9 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
 import java.time.LocalDate;
+import java.util.List;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -54,6 +59,8 @@ import java.time.LocalDateTime;
 @RequestMapping(CouponConstants.API_BASE_PATH + CouponConstants.REDEMPTIONS_PATH)
 @Tag(name = "Redemptions", description = "Redeeming coupons at a site: scan/submit, then post with a Navision document number")
 public class RedemptionController {
+
+    private static final int LOG_EXPORT_LIMIT = 10_000;
 
     private final CouponLifecycleService couponLifecycleService;
     private final RedemptionReportService redemptionReportService;
@@ -100,7 +107,7 @@ public class RedemptionController {
     }
 
     @GetMapping("/summary")
-    @PreAuthorize("hasAnyRole('ATTENDANT','TEAM_LEADER','ADMIN','STOCKS_CLERK','STOCKS_CONTROLLER','REGIONAL_REP')")
+    @PreAuthorize("hasAnyRole('ATTENDANT','TEAM_LEADER','ADMIN','STOCKS_CLERK','STOCKS_CONTROLLER','REGIONAL_REP','RETAIL_MANAGER')")
     @Operation(summary = "What was redeemed over a day or a date range",
             description = "Coupon count and litres, in total and per fuel type (with a denomination "
                     + "breakdown) — optionally limited to one site and/or one fuel type. Pass dateFrom/dateTo "
@@ -117,10 +124,14 @@ public class RedemptionController {
             @Parameter(description = "Limit to one site (location ID) — ignored for a station-scoped caller")
             @RequestParam(required = false) Long locationId,
             @Parameter(description = "Limit to one fuel type")
-            @RequestParam(required = false) Long fuelTypeId) {
+            @RequestParam(required = false) Long fuelTypeId,
+            @Parameter(description = "Limit to one company's sites (e.g. Redan) — ignored for a station-scoped caller")
+            @RequestParam(required = false) Long companyId,
+            @Parameter(description = "PHYSICAL or DIGITAL; omit for both")
+            @RequestParam(required = false) CouponType couponType) {
         LocalDate[] range = resolveRange(date, dateFrom, dateTo);
         return ResponseEntity.ok(ApiResponse.success(
-                redemptionReportService.summary(range[0], range[1], locationId, fuelTypeId)));
+                redemptionReportService.summary(range[0], range[1], locationId, fuelTypeId, companyId, couponType)));
     }
 
     @GetMapping("/summary/export/excel")
@@ -132,9 +143,12 @@ public class RedemptionController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
             @RequestParam(required = false) Long locationId,
-            @RequestParam(required = false) Long fuelTypeId) {
+            @RequestParam(required = false) Long fuelTypeId,
+            @RequestParam(required = false) Long companyId,
+            @Parameter(description = "PHYSICAL or DIGITAL; omit for both")
+            @RequestParam(required = false) CouponType couponType) {
         LocalDate[] range = resolveRange(date, dateFrom, dateTo);
-        RedemptionSummaryResponse summary = redemptionReportService.summary(range[0], range[1], locationId, fuelTypeId);
+        RedemptionSummaryResponse summary = redemptionReportService.summary(range[0], range[1], locationId, fuelTypeId, companyId, couponType);
         StreamingResponseBody body = out -> redemptionSummaryExportService.exportExcel(summary, out);
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION,
@@ -152,9 +166,12 @@ public class RedemptionController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
             @RequestParam(required = false) Long locationId,
-            @RequestParam(required = false) Long fuelTypeId) {
+            @RequestParam(required = false) Long fuelTypeId,
+            @RequestParam(required = false) Long companyId,
+            @Parameter(description = "PHYSICAL or DIGITAL; omit for both")
+            @RequestParam(required = false) CouponType couponType) {
         LocalDate[] range = resolveRange(date, dateFrom, dateTo);
-        RedemptionSummaryResponse summary = redemptionReportService.summary(range[0], range[1], locationId, fuelTypeId);
+        RedemptionSummaryResponse summary = redemptionReportService.summary(range[0], range[1], locationId, fuelTypeId, companyId, couponType);
         StreamingResponseBody body = out -> redemptionSummaryExportService.exportPdf(summary, out);
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION,
@@ -173,12 +190,12 @@ public class RedemptionController {
     }
 
     @GetMapping("/summary/by-attendant")
-    @PreAuthorize("hasRole('TEAM_LEADER')")
+    @PreAuthorize("hasAnyRole('TEAM_LEADER','REGIONAL_REP','RETAIL_MANAGER')")
     @Operation(summary = "Who redeemed what, over a day or a date range",
-            description = "Per-attendant coupon count and litres at the caller's own station, optionally "
-                    + "narrowed to one attendant and/or one fuel type. Team Leader only — which attendant "
-                    + "redeemed what is their information to see, not Admin's; Admin gets site-level totals "
-                    + "via GET /summary instead, with no individual attendant names.")
+            description = "Per-attendant coupon count and litres (with the attendant's name), optionally narrowed "
+                    + "to one attendant and/or one fuel type. A Team Leader always gets their own station; a "
+                    + "Regional Rep passes locationId for one site, or omits it for every site. Admin still "
+                    + "gets site-level totals only, via GET /summary.")
     public ResponseEntity<ApiResponse<RedemptionByAttendantResponse>> summaryByAttendant(
             @Parameter(description = "Single day (ISO format, e.g. 2026-08-05) — shorthand for dateFrom=dateTo=date")
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
@@ -189,10 +206,83 @@ public class RedemptionController {
             @Parameter(description = "Limit to one attendant (their Keycloak username) at the caller's station")
             @RequestParam(required = false) String attendantUsername,
             @Parameter(description = "Limit to one fuel type")
-            @RequestParam(required = false) Long fuelTypeId) {
+            @RequestParam(required = false) Long fuelTypeId,
+            @Parameter(description = "Regional Rep: the site to break down (omit for every site). Ignored for a Team Leader.")
+            @RequestParam(required = false) Long locationId,
+            @Parameter(description = "PHYSICAL or DIGITAL; omit for both")
+            @RequestParam(required = false) CouponType couponType) {
         LocalDate[] range = resolveRange(date, dateFrom, dateTo);
         return ResponseEntity.ok(ApiResponse.success(
-                redemptionReportService.byAttendant(range[0], range[1], attendantUsername, fuelTypeId)));
+                redemptionReportService.byAttendant(range[0], range[1], locationId, attendantUsername, fuelTypeId, couponType)));
+    }
+
+    // Attendant names and vehicles: station staff (scoped to their site / themselves), plus Admin, Stocks Controller and
+    // the Regional Rep (all sites).
+    @GetMapping("/log")
+    @PreAuthorize("hasAnyRole('ATTENDANT','TEAM_LEADER','REGIONAL_REP','RETAIL_MANAGER','ADMIN','STOCKS_CONTROLLER')")
+    @Operation(summary = "Redemption log — every redemption with its exact time",
+            description = "One row per redemption, newest first: redeemedAt timestamp, attendant (username + name), "
+                    + "site, company, vehicle, coupons, litres, fuel type(s), and ERP status. Same date params as "
+                    + "GET /summary (defaults to today). A Team Leader sees their site, a plain Attendant only their "
+                    + "own; everyone else filters by companyId, locationId and/or attendantUsername. Paged.")
+    public ResponseEntity<ApiResponse<PagedResponse<RedemptionLogEntry>>> log(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
+            @RequestParam(required = false) Long companyId,
+            @RequestParam(required = false) Long locationId,
+            @RequestParam(required = false) String attendantUsername,
+            @Parameter(description = "PHYSICAL or DIGITAL (redemptions holding that type); omit for both")
+            @RequestParam(required = false) CouponType couponType,
+            @PageableDefault(size = 50, sort = "requestedAt", direction = Sort.Direction.DESC) Pageable pageable) {
+        LocalDate[] range = resolveRange(date, dateFrom, dateTo);
+        return ResponseEntity.ok(ApiResponse.success(
+                redemptionReportService.log(range[0], range[1], locationId, companyId, attendantUsername, couponType, pageable)));
+    }
+
+    @GetMapping("/log/totals")
+    @PreAuthorize("hasAnyRole('ATTENDANT','TEAM_LEADER','REGIONAL_REP','RETAIL_MANAGER','ADMIN','STOCKS_CONTROLLER')")
+    @Operation(summary = "Totals for the redemption log",
+            description = "Redemptions, coupons and litres across every row GET /log would page through (same filters "
+                    + "and scoping). REJECTED redemptions are excluded; PENDING ones are included.")
+    public ResponseEntity<ApiResponse<RedemptionLogTotals>> logTotals(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
+            @RequestParam(required = false) Long companyId,
+            @RequestParam(required = false) Long locationId,
+            @RequestParam(required = false) String attendantUsername,
+            @Parameter(description = "PHYSICAL or DIGITAL; omit for both")
+            @RequestParam(required = false) CouponType couponType) {
+        LocalDate[] range = resolveRange(date, dateFrom, dateTo);
+        return ResponseEntity.ok(ApiResponse.success(
+                redemptionReportService.logTotals(range[0], range[1], locationId, companyId, attendantUsername, couponType)));
+    }
+
+    @GetMapping("/log/export/excel")
+    @PreAuthorize("hasAnyRole('ATTENDANT','TEAM_LEADER','REGIONAL_REP','RETAIL_MANAGER','ADMIN','STOCKS_CONTROLLER')")
+    @Operation(summary = "Export the redemption log as an Excel workbook",
+            description = "Same filters and scoping as GET /log, newest first, capped at " + LOG_EXPORT_LIMIT + " rows.")
+    public ResponseEntity<StreamingResponseBody> exportLogExcel(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
+            @RequestParam(required = false) Long companyId,
+            @RequestParam(required = false) Long locationId,
+            @RequestParam(required = false) String attendantUsername,
+            @Parameter(description = "PHYSICAL or DIGITAL; omit for both")
+            @RequestParam(required = false) CouponType couponType) {
+        LocalDate[] range = resolveRange(date, dateFrom, dateTo);
+        List<RedemptionLogEntry> entries = redemptionReportService.log(range[0], range[1], locationId, companyId,
+                attendantUsername, couponType, PageRequest.of(0, LOG_EXPORT_LIMIT, Sort.by(Sort.Direction.DESC, "requestedAt"))).content();
+        String title = "Redemption Log: %s to %s%s".formatted(range[0], range[1],
+                couponType == null ? "" : " (" + couponType + " coupons)");
+        StreamingResponseBody body = out -> redemptionSummaryExportService.exportLogExcel(entries, title, out);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        "attachment; filename=\"redemption-log-%s.xlsx\"".formatted(exportTimestamp()))
+                .contentType(MediaType.valueOf("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+                .body(body);
     }
 
     @GetMapping("/summary/by-attendant/{attendantUsername}")
@@ -207,10 +297,12 @@ public class RedemptionController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
             @Parameter(description = "Limit to one fuel type")
-            @RequestParam(required = false) Long fuelTypeId) {
+            @RequestParam(required = false) Long fuelTypeId,
+            @Parameter(description = "PHYSICAL or DIGITAL; omit for both")
+            @RequestParam(required = false) CouponType couponType) {
         LocalDate[] range = resolveRange(date, dateFrom, dateTo);
         return ResponseEntity.ok(ApiResponse.success(
-                redemptionReportService.summaryForAttendant(range[0], range[1], attendantUsername, fuelTypeId)));
+                redemptionReportService.summaryForAttendant(range[0], range[1], attendantUsername, fuelTypeId, couponType)));
     }
 
     @GetMapping("/summary/by-attendant/{attendantUsername}/export/excel")
@@ -222,10 +314,12 @@ public class RedemptionController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
-            @RequestParam(required = false) Long fuelTypeId) {
+            @RequestParam(required = false) Long fuelTypeId,
+            @Parameter(description = "PHYSICAL or DIGITAL; omit for both")
+            @RequestParam(required = false) CouponType couponType) {
         LocalDate[] range = resolveRange(date, dateFrom, dateTo);
         RedemptionSummaryResponse summary =
-                redemptionReportService.summaryForAttendant(range[0], range[1], attendantUsername, fuelTypeId);
+                redemptionReportService.summaryForAttendant(range[0], range[1], attendantUsername, fuelTypeId, couponType);
         StreamingResponseBody body = out -> redemptionSummaryExportService.exportExcel(summary, out);
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION,
@@ -243,10 +337,12 @@ public class RedemptionController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
-            @RequestParam(required = false) Long fuelTypeId) {
+            @RequestParam(required = false) Long fuelTypeId,
+            @Parameter(description = "PHYSICAL or DIGITAL; omit for both")
+            @RequestParam(required = false) CouponType couponType) {
         LocalDate[] range = resolveRange(date, dateFrom, dateTo);
         RedemptionSummaryResponse summary =
-                redemptionReportService.summaryForAttendant(range[0], range[1], attendantUsername, fuelTypeId);
+                redemptionReportService.summaryForAttendant(range[0], range[1], attendantUsername, fuelTypeId, couponType);
         StreamingResponseBody body = out -> redemptionSummaryExportService.exportPdf(summary, out);
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION,

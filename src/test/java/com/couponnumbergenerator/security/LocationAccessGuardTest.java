@@ -36,6 +36,7 @@ class LocationAccessGuardTest {
     @Test
     void regionalRepAndCommercialManagerIgnoreAStrayLocationCode() {
         assertThat(guard.callerLocationCode(caller("ROLE_REGIONAL_REP"))).isNull();
+        assertThat(guard.callerLocationCode(caller("ROLE_RETAIL_MANAGER"))).isNull();
         assertThat(guard.callerLocationCode(caller("ROLE_COMMERCIAL_MANAGER"))).isNull();
     }
 }

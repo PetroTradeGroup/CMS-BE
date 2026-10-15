@@ -32,6 +32,10 @@ public class Location {
     @Column(length = 255)
     private String address;
 
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "company_id", nullable = false)
+    private Company company;
+
     @Column(nullable = false)
     @Builder.Default
     private boolean active = true;

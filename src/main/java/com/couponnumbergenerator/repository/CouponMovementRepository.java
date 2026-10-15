@@ -1,10 +1,12 @@
 package com.couponnumbergenerator.repository;
 
 import com.couponnumbergenerator.enums.CouponStatus;
+import com.couponnumbergenerator.enums.CouponType;
 import com.couponnumbergenerator.model.CouponMovement;
 import com.couponnumbergenerator.repository.projection.CouponActivityRow;
 import com.couponnumbergenerator.repository.projection.StatusFlowRow;
 import com.couponnumbergenerator.repository.projection.RedemptionByAttendantRow;
+import com.couponnumbergenerator.repository.projection.RedemptionBySiteRow;
 import com.couponnumbergenerator.repository.projection.RedemptionSummaryRow;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -32,6 +34,8 @@ public interface CouponMovementRepository extends JpaRepository<CouponMovement, 
               AND (:locationId IS NULL OR m.toLocation.id = :locationId)
               AND (:requestedBy IS NULL OR a.requestedBy = :requestedBy)
               AND (:fuelTypeId IS NULL OR ft.id = :fuelTypeId)
+              AND (:companyId IS NULL OR m.toLocation.company.id = :companyId)
+              AND (:couponType IS NULL OR c.couponType = :couponType)
             GROUP BY ft.id, ft.name, c.denomination
             ORDER BY ft.name, c.denomination
             """)
@@ -39,7 +43,36 @@ public interface CouponMovementRepository extends JpaRepository<CouponMovement, 
                                                     @Param("end") LocalDateTime end,
                                                     @Param("locationId") Long locationId,
                                                     @Param("requestedBy") String requestedBy,
-                                                    @Param("fuelTypeId") Long fuelTypeId);
+                                                    @Param("fuelTypeId") Long fuelTypeId,
+                                                    @Param("companyId") Long companyId,
+                                                    @Param("couponType") CouponType couponType);
+
+    /** Same filters as summarizeRedemptions, one line per site (with its company) instead of per fuel type. */
+    @Query("""
+            SELECT l.id AS locationId, l.code AS locationCode, l.name AS locationName, co.name AS companyName,
+                   COUNT(c) AS count, SUM(c.denomination) AS litres
+            FROM CouponMovement m
+            JOIN m.coupon c
+            JOIN m.toLocation l
+            JOIN l.company co
+            LEFT JOIN CouponApprovalRequest a ON a.id = m.referenceId
+            WHERE m.movementType = com.couponnumbergenerator.enums.MovementType.REDEMPTION
+              AND m.createdAt >= :start AND m.createdAt < :end
+              AND (:locationId IS NULL OR l.id = :locationId)
+              AND (:requestedBy IS NULL OR a.requestedBy = :requestedBy)
+              AND (:fuelTypeId IS NULL OR c.fuelType.id = :fuelTypeId)
+              AND (:companyId IS NULL OR co.id = :companyId)
+              AND (:couponType IS NULL OR c.couponType = :couponType)
+            GROUP BY l.id, l.code, l.name, co.name
+            ORDER BY co.name, l.name
+            """)
+    List<RedemptionBySiteRow> summarizeRedemptionsBySite(@Param("start") LocalDateTime start,
+                                                         @Param("end") LocalDateTime end,
+                                                         @Param("locationId") Long locationId,
+                                                         @Param("requestedBy") String requestedBy,
+                                                         @Param("fuelTypeId") Long fuelTypeId,
+                                                         @Param("companyId") Long companyId,
+                                                         @Param("couponType") CouponType couponType);
 
     /**
      * Coupons that moved into each status within [start, end) — REASSIGNMENT rows are skipped since the
@@ -116,6 +149,7 @@ public interface CouponMovementRepository extends JpaRepository<CouponMovement, 
               AND (:locationId IS NULL OR m.toLocation.id = :locationId)
               AND (:requestedBy IS NULL OR a.requestedBy = :requestedBy)
               AND (:fuelTypeId IS NULL OR c.fuelType.id = :fuelTypeId)
+              AND (:couponType IS NULL OR c.couponType = :couponType)
             GROUP BY a.requestedBy
             ORDER BY a.requestedBy
             """)
@@ -123,5 +157,6 @@ public interface CouponMovementRepository extends JpaRepository<CouponMovement, 
                                                                      @Param("end") LocalDateTime end,
                                                                      @Param("locationId") Long locationId,
                                                                      @Param("requestedBy") String requestedBy,
-                                                                     @Param("fuelTypeId") Long fuelTypeId);
+                                                                     @Param("fuelTypeId") Long fuelTypeId,
+                                                                     @Param("couponType") CouponType couponType);
 }

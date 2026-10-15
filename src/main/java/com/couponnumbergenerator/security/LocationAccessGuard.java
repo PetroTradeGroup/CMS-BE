@@ -16,13 +16,14 @@ import java.util.Set;
 public class LocationAccessGuard {
 
     /**
-     * A Regional Rep oversees every site, and a Commercial Manager receives requisition stock
+     * A Regional Rep (and the Retail Manager who supervises them) oversees every site, and a Commercial Manager receives requisition stock
      * bound for any site, so any locationCode on their account (e.g. a home station) is ignored —
      * they're treated as non-station, like Stocks/Admin. Otherwise a stray locationCode would
      * narrow their approvals list to their own submissions at one station, i.e. nothing.
      */
     public String callerLocationCode(Authentication authentication) {
-        if (hasRole(authentication, "ROLE_REGIONAL_REP") || hasRole(authentication, "ROLE_COMMERCIAL_MANAGER")) {
+        if (hasRole(authentication, "ROLE_REGIONAL_REP") || hasRole(authentication, "ROLE_RETAIL_MANAGER")
+                || hasRole(authentication, "ROLE_COMMERCIAL_MANAGER")) {
             return null;
         }
         Jwt jwt = (Jwt) authentication.getPrincipal();
@@ -55,7 +56,7 @@ public class LocationAccessGuard {
     }
 
     private static final Set<String> BROADER_THAN_SALES_CLERK = Set.of("ROLE_ADMIN", "ROLE_STOCKS_CLERK",
-            "ROLE_STOCKS_CONTROLLER", "ROLE_REGIONAL_REP", "ROLE_ACCOUNTS_CLERK", "ROLE_COMMERCIAL_MANAGER");
+            "ROLE_STOCKS_CONTROLLER", "ROLE_REGIONAL_REP", "ROLE_RETAIL_MANAGER", "ROLE_ACCOUNTS_CLERK", "ROLE_COMMERCIAL_MANAGER");
 
     private boolean hasRole(Authentication authentication, String role) {
         return authentication.getAuthorities().stream()

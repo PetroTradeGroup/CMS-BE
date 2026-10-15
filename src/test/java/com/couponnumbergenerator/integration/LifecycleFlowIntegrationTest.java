@@ -144,7 +144,7 @@ class LifecycleFlowIntegrationTest {
     void transferRangeAndWholeBatchMoveOnlyTheSelectedCouponsAfterApproval() {
         Long fuelTypeId = fuelTypeRepository.findAll().getFirst().getId();
         Long depotId = locationService.create(
-                new CreateLocationRequest("DEP-TR", "Transfer Test Depot", LocationType.DEPOT, null)).id();
+                new CreateLocationRequest("DEP-TR", "Transfer Test Depot", LocationType.DEPOT, null, null)).id();
         Long commercialId = departmentService.create(
                 new CreateDepartmentRequest("COMM-TR", "Commercial Test")).id();
 
@@ -195,7 +195,7 @@ class LifecycleFlowIntegrationTest {
     void rejectedTransferLeavesCouponsUntouched() {
         Long fuelTypeId = fuelTypeRepository.findAll().getFirst().getId();
         Long depotId = locationService.create(
-                new CreateLocationRequest("DEP-RJ", "Reject Test Depot", LocationType.DEPOT, null)).id();
+                new CreateLocationRequest("DEP-RJ", "Reject Test Depot", LocationType.DEPOT, null, null)).id();
 
         List<CouponResponse> generated = couponService.generateBulkCoupons(new GenerateBulkCouponRequest(
                 fuelTypeId, BigDecimal.ONE, List.of(new DenominationLine(BigDecimal.ONE, 1)),
