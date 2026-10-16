@@ -81,6 +81,7 @@ public class RequisitionController {
         if (owner != null && !owner.equals(response.requestedBy())) {
             throw new RequisitionNotFoundException(id);
         }
+
         return ResponseEntity.ok(ApiResponse.success(response));
     }
 
