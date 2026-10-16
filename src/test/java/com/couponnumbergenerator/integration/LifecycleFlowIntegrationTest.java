@@ -194,14 +194,12 @@ class LifecycleFlowIntegrationTest {
         long stillAtHq = wholeBatch.content().stream().filter(c -> c.location().code().equals("HQ")).count();
         assertThat(stillAtHq).isEqualTo(97);
 
-        // Whole-batch transfer (no range) also defers; approving it moves everything, including the 97 left behind.
-        ApprovalRequestResponse wholeRequest = pending(lifecycleService.transferByBatch(new TransferRequest(
-                batch.getId(), null, null, null, depotId, null, null, null, "tester")));
-        lifecycleService.approve(wholeRequest.id(), new ApprovalDecisionRequest("supervisor", null));
-
-        PagedResponse<CouponResponse> allAtDepot = couponService.getCoupons(
-                new CouponFilterRequest(null, null, null, null, depotId, null, null, null), PageRequest.of(0, 100));
-        assertThat(allAtDepot.content()).hasSize(100);
+        // Only STOCKS-held coupons can be transferred, and a transfer is all-or-nothing — so a
+        // whole-batch move is refused now that 3 of its coupons are in COMM-TR's custody.
+        assertThatThrownBy(() -> lifecycleService.transferByBatch(new TransferRequest(
+                batch.getId(), null, null, null, depotId, null, null, null, "tester")))
+                .isInstanceOf(InvalidStatusTransitionException.class)
+                .hasMessageContaining("not STOCKS");
     }
 
     @Test
