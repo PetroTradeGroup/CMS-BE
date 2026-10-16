@@ -7,6 +7,7 @@ import com.couponnumbergenerator.dto.request.CreateLocationRequest;
 import com.couponnumbergenerator.dto.request.DenominationLine;
 import com.couponnumbergenerator.dto.request.ErpSaleRequest;
 import com.couponnumbergenerator.dto.request.GenerateBulkCouponRequest;
+import com.couponnumbergenerator.dto.request.ReceiptConfirmationRequest;
 import com.couponnumbergenerator.dto.request.ReceiveBatchRequest;
 import com.couponnumbergenerator.dto.request.TransferRequest;
 import com.couponnumbergenerator.dto.request.TransitionRequest;
@@ -43,6 +44,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.transaction.annotation.Transactional;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
@@ -52,6 +56,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.Comparator;
 import java.util.List;
+import java.util.function.Supplier;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -166,9 +171,15 @@ class LifecycleFlowIntegrationTest {
                 new CouponFilterRequest(null, null, null, null, depotId, null, null, null), PageRequest.of(0, 20));
         assertThat(beforeApproval.content()).isEmpty();
 
-        ApprovalRequestResponse approvedRange = lifecycleService.approve(rangeRequest.id(),
-                new ApprovalDecisionRequest("supervisor", null));
-        assertThat(approvedRange.status()).isEqualTo(ApprovalStatus.APPROVED);
+        // A department handoff is two-phase: Stocks approves (coupons ship IN_TRANSIT), then the
+        // receiving department confirms receipt. Each step checks the caller's department claim.
+        ApprovalRequestResponse shipped = asDepartment("STOCKS", () -> lifecycleService.approve(rangeRequest.id(),
+                new ApprovalDecisionRequest("supervisor", null)));
+        assertThat(shipped.status()).isEqualTo(ApprovalStatus.TRANSFERSHIPMENT);
+
+        ApprovalRequestResponse received = asDepartment("COMM-TR", () -> lifecycleService.confirmReceipt(
+                rangeRequest.id(), new ReceiptConfirmationRequest("receiver", null)));
+        assertThat(received.status()).isEqualTo(ApprovalStatus.TRANSRECEIPT);
 
         PagedResponse<CouponResponse> atDepot = couponService.getCoupons(
                 new CouponFilterRequest(null, null, null, null, depotId, null, null, null), PageRequest.of(0, 20));
@@ -324,6 +335,16 @@ class LifecycleFlowIntegrationTest {
                 .filter(b -> b.getBatchNumber().equals(batchNumber))
                 .findFirst()
                 .orElseThrow();
+    }
+
+    private static <T> T asDepartment(String departmentCode, Supplier<T> action) {
+        Jwt jwt = Jwt.withTokenValue("token").header("alg", "none").claim("department", departmentCode).build();
+        SecurityContextHolder.getContext().setAuthentication(new JwtAuthenticationToken(jwt));
+        try {
+            return action.get();
+        } finally {
+            SecurityContextHolder.clearContext();
+        }
     }
 
     private static <T> ApprovalRequestResponse pending(ActionOutcome<T> outcome) {
