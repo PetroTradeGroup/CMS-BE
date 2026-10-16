@@ -4,6 +4,7 @@ import com.couponnumbergenerator.enums.CouponStatus;
 import com.couponnumbergenerator.enums.CouponType;
 import com.couponnumbergenerator.enums.LocationType;
 import com.couponnumbergenerator.model.Coupon;
+import com.couponnumbergenerator.model.Department;
 import com.couponnumbergenerator.model.FuelType;
 import com.couponnumbergenerator.model.Location;
 import com.couponnumbergenerator.repository.projection.InventorySummaryRow;
@@ -17,6 +18,7 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -33,9 +35,11 @@ class InventorySummaryRepositoryTest {
     @Autowired private CouponRepository couponRepository;
     @Autowired private FuelTypeRepository fuelTypeRepository;
     @Autowired private LocationRepository locationRepository;
+    @Autowired private DepartmentRepository departmentRepository;
 
     private Location hq;
     private Location depot;
+    private Department stocks;
     private FuelType petrol;
     private FuelType diesel;
 
@@ -44,6 +48,8 @@ class InventorySummaryRepositoryTest {
         couponRepository.deleteAll();
         // HQ is seeded by the V2 migration.
         hq = locationRepository.findByCode("HQ").orElseThrow();
+        // STOCKS is seeded by the V3 migration.
+        stocks = departmentRepository.findByCode("STOCKS").orElseThrow();
         depot = locationRepository.findByCode("DEP1").orElseGet(() -> locationRepository.save(
                 Location.builder().code("DEP1").name("North Depot").type(LocationType.DEPOT).company(hq.getCompany()).build()));
         petrol = fuelTypeRepository.findAll().stream()
@@ -66,6 +72,8 @@ class InventorySummaryRepositoryTest {
                 .couponNumber(number)
                 .fuelType(fuelType)
                 .currentLocation(location)
+                .currentDepartment(stocks)
+                .denomination(BigDecimal.ONE)
                 .couponType(CouponType.PHYSICAL)
                 .status(status)
                 .build());

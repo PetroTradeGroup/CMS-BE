@@ -18,6 +18,7 @@ import com.couponnumbergenerator.enums.ApprovalStatus;
 import com.couponnumbergenerator.enums.CouponStatus;
 import com.couponnumbergenerator.model.Coupon;
 import org.springframework.data.domain.Pageable;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
@@ -75,6 +76,9 @@ public interface CouponLifecycleService {
      * same as {@link #transition}. If {@code toLocationId} and/or {@code toDepartmentId} is
      * set, the move is deferred for supervisor approval instead of applying immediately.
      */
+    // Without this the proxy runs the default method untransacted and its self-call skips the
+    // overload's @Transactional — lazy loads then fail outside a web request (open-in-view).
+    @Transactional
     default ActionOutcome<TransferResultResponse> transferByBatch(TransferRequest request) {
         return transferByBatch(request, false);
     }
@@ -114,6 +118,7 @@ public interface CouponLifecycleService {
     ApprovalRequestResponse getApprovalRequest(Long approvalRequestId);
 
     /** The supervisor's queue, optionally filtered by status (defaults to all). */
+    @Transactional(readOnly = true)
     default PagedResponse<ApprovalRequestResponse> getApprovalRequests(ApprovalStatus status, Pageable pageable) {
         return getApprovalRequests(null, status, pageable);
     }

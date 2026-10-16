@@ -82,12 +82,16 @@ class LifecycleFlowIntegrationTest {
     @Test
     void fullPhysicalLifecycleFlow() {
         Long fuelTypeId = fuelTypeRepository.findAll().getFirst().getId();
+        // No rollback between methods, so compare inventory before/after rather than absolutes.
+        long inStockBefore = countFor(fuelTypeId, CouponStatus.IN_STOCK);
+        long cancelledBefore = countFor(fuelTypeId, CouponStatus.CANCELLED);
 
+        // Physical coupons come in whole books of 100.
         List<CouponResponse> generated = couponService.generateBulkCoupons(new GenerateBulkCouponRequest(
-                fuelTypeId, BigDecimal.valueOf(5), List.of(new DenominationLine(BigDecimal.ONE, 5)),
+                fuelTypeId, BigDecimal.valueOf(100), List.of(new DenominationLine(BigDecimal.ONE, 100)),
                 null, null, CouponType.PHYSICAL, LocalDate.now().plusYears(1), "tester"));
 
-        assertThat(generated).hasSize(5).allSatisfy(coupon -> {
+        assertThat(generated).hasSize(100).allSatisfy(coupon -> {
             assertThat(coupon.status()).isEqualTo(CouponStatus.GENERATED);
             assertThat(coupon.location().code()).isEqualTo("HQ");
             assertThat(coupon.department().code()).isEqualTo("STOCKS");
@@ -96,7 +100,7 @@ class LifecycleFlowIntegrationTest {
 
         CouponBatch batch = findBatch(generated.getFirst().batchNumber());
         var receipt = lifecycleService.receiveBatch(batch.getId(), new ReceiveBatchRequest(null, "tester"));
-        assertThat(receipt.count()).isEqualTo(5);
+        assertThat(receipt.count()).isEqualTo(100);
         assertThat(receipt.targetStatus()).isEqualTo(CouponStatus.IN_STOCK);
 
         String cancelledNumber = generated.getFirst().couponNumber();
@@ -112,15 +116,13 @@ class LifecycleFlowIntegrationTest {
                 List.of(cancelledNumber), CouponStatus.REDEEMED, null, null, "tester")))
                 .isInstanceOf(InvalidStatusTransitionException.class);
 
-        List<InventorySummaryResponse> summary = inventoryService.summarize(null, fuelTypeId, null);
-        long inStock = summary.stream()
-                .filter(row -> row.status() == CouponStatus.IN_STOCK)
+        assertThat(countFor(fuelTypeId, CouponStatus.IN_STOCK) - inStockBefore).isEqualTo(99);
+        assertThat(countFor(fuelTypeId, CouponStatus.CANCELLED) - cancelledBefore).isEqualTo(1);
+    }
+
+    private long countFor(Long fuelTypeId, CouponStatus status) {
+        return inventoryService.summarize(null, fuelTypeId, status).stream()
                 .mapToLong(InventorySummaryResponse::count).sum();
-        long cancelled = summary.stream()
-                .filter(row -> row.status() == CouponStatus.CANCELLED)
-                .mapToLong(InventorySummaryResponse::count).sum();
-        assertThat(inStock).isEqualTo(4);
-        assertThat(cancelled).isEqualTo(1);
     }
 
     @Test
@@ -149,12 +151,12 @@ class LifecycleFlowIntegrationTest {
                 new CreateDepartmentRequest("COMM-TR", "Commercial Test")).id();
 
         List<CouponResponse> generated = couponService.generateBulkCoupons(new GenerateBulkCouponRequest(
-                fuelTypeId, BigDecimal.valueOf(5), List.of(new DenominationLine(BigDecimal.ONE, 5)),
+                fuelTypeId, BigDecimal.valueOf(100), List.of(new DenominationLine(BigDecimal.ONE, 100)),
                 null, null, CouponType.PHYSICAL, null, "tester"));
         CouponBatch batch = findBatch(generated.getFirst().batchNumber());
         lifecycleService.receiveBatch(batch.getId(), new ReceiveBatchRequest(null, "tester"));
 
-        // Transfer coupons #2-#4 (of 5) to the depot + commercial department, keeping status.
+        // Transfer coupons #2-#4 (of 100) to the depot + commercial department, keeping status.
         // Moving location/department defers for supervisor approval instead of applying immediately.
         ApprovalRequestResponse rangeRequest = pending(lifecycleService.transferByBatch(new TransferRequest(
                 batch.getId(), 2, 4, null, depotId, commercialId, null, null, "tester")));
@@ -177,18 +179,18 @@ class LifecycleFlowIntegrationTest {
         });
 
         PagedResponse<CouponResponse> wholeBatch = couponService.getCoupons(
-                new CouponFilterRequest(null, null, null, null, null, null, batch.getId(), null), PageRequest.of(0, 20));
+                new CouponFilterRequest(null, null, null, null, null, null, batch.getId(), null), PageRequest.of(0, 100));
         long stillAtHq = wholeBatch.content().stream().filter(c -> c.location().code().equals("HQ")).count();
-        assertThat(stillAtHq).isEqualTo(2);
+        assertThat(stillAtHq).isEqualTo(97);
 
-        // Whole-batch transfer (no range) also defers; approving it moves everything, including the 2 left behind.
+        // Whole-batch transfer (no range) also defers; approving it moves everything, including the 97 left behind.
         ApprovalRequestResponse wholeRequest = pending(lifecycleService.transferByBatch(new TransferRequest(
                 batch.getId(), null, null, null, depotId, null, null, null, "tester")));
         lifecycleService.approve(wholeRequest.id(), new ApprovalDecisionRequest("supervisor", null));
 
         PagedResponse<CouponResponse> allAtDepot = couponService.getCoupons(
-                new CouponFilterRequest(null, null, null, null, depotId, null, null, null), PageRequest.of(0, 20));
-        assertThat(allAtDepot.content()).hasSize(5);
+                new CouponFilterRequest(null, null, null, null, depotId, null, null, null), PageRequest.of(0, 100));
+        assertThat(allAtDepot.content()).hasSize(100);
     }
 
     @Test
@@ -249,7 +251,10 @@ class LifecycleFlowIntegrationTest {
     @Test
     @Transactional
     void findIssuableForSaleDrawsStockInBatchThenBookThenPositionOrder() {
-        Long fuelTypeId = fuelTypeRepository.findAll().getFirst().getId();
+        // Own fuel type (rolled back by @Transactional): stock left at HQ by other tests would
+        // otherwise be drawn first and break the batch-order assertions.
+        Long fuelTypeId = fuelTypeRepository.save(
+                FuelType.builder().name("FIFO-TEST").typeCode("099").build()).getId();
 
         // Two batches of two whole books ($1 x 200), both received into HQ / STOCKS.
         BatchInStock older = generateWholeBooksIntoStock(fuelTypeId, 200);
